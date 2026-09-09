@@ -41,6 +41,14 @@ struct LocationAutocompleteChecks {
     try await Task.sleep(for: .milliseconds(30))
     precondition(service.queries.isEmpty, "Short or unfocused input must not make requests")
 
+    for placeholder in ["To be decided", "  TO BE DECIDED\n", "   "] {
+      model.search(placeholder, isEditing: true)
+      try await Task.sleep(for: .milliseconds(30))
+      precondition(service.queries.isEmpty, "An undecided location must not be sent to Google")
+      precondition(model.suggestions.isEmpty && model.message == nil && !model.isLoading)
+    }
+    precondition(RallyLocation.value("To Be Decided Cafe") == "To Be Decided Cafe")
+
     model.search("caf", isEditing: true)
     model.search("cafe", isEditing: true)
     model.search("  cafe nyc  ", isEditing: true)
@@ -78,7 +86,7 @@ struct LocationAutocompleteChecks {
     model.search(String(repeating: "a", count: 201), isEditing: true)
     precondition(service.queries.count == calls)
     print(
-      "PASS: autocomplete debounce, stale response isolation, selection, dismissal, offline fallback, missing configuration, query limits"
+      "PASS: undecided locations, autocomplete debounce, stale response isolation, selection, dismissal, offline fallback, missing configuration, query limits"
     )
   }
 }

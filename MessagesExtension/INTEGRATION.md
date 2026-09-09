@@ -43,6 +43,12 @@ instants in UTC, and payloads are checked against the 16 KiB limit. HTTP 201 is 
 `publicUrl`, ignoring the private creator token. The API derives ownership from
 authentication and owns lifecycle, `next_action`, responses, and finalization.
 
+The organizer app deletes a Rally only after an explicit confirmation. It sends
+`DELETE /api/v1/rallies/:id` with the owner's Bearer token and no body, accepts
+`204 No Content` without JSON decoding, removes the local item, and refreshes
+the list. An uncertain deletion requires a refresh before another attempt;
+a subsequent `404` removes the unavailable detail from the native UI.
+
 `publicURL` must be a public HTTPS recipient link. The current website uses
 `/r/<inviteToken>`; `/m/<creatorToken>` is private and must never be shared. The
 validator allows the apex and www Rally hosts, a 16–64 character lowercase
@@ -70,9 +76,12 @@ the old local response UI and URL-embedded plan data have been removed.
 
 ## Shared login
 
-The app implements email magic-link login with the pinned Supabase Auth SDK
-(2.55.1), PKCE callback exchange, verified `/me` identity, and foreground token
-refresh. The extension reads an access-token snapshot from the shared Keychain;
+The app implements email link and one-time code login with the pinned Supabase
+Auth SDK (2.55.1). Links use PKCE callback exchange; codes use email OTP
+verification and can be entered after requesting an email in the app or through
+**I already have a code** for an email requested elsewhere. Both paths verify
+`/me` identity before sharing the session and use foreground token refresh.
+The extension reads an access-token snapshot from the shared Keychain;
 only the app refreshes the session. Tokens use WhenUnlockedThisDeviceOnly
 accessibility and are never stored in defaults, links, or logs.
 
@@ -100,6 +109,7 @@ Run integration checks on macOS without a Simulator:
 
 ```sh
 swiftc -module-cache-path /tmp/rally-swift-module-cache \
+  Shared/RallyLocation.swift \
   MessagesExtension/RallyIntegration.swift RallyMessagesApp/RallyAccountAPI.swift \
   RallyMessagesApp/RallyAuthConfiguration.swift Tests/RallyIntegrationChecks.swift \
   Tests/RallyHTTPChecks.swift \
@@ -115,3 +125,10 @@ A read-only production `/me` probe returned the documented 401 without credentia
 Authenticated production creation, shared Keychain provisioning, organizer-app
 visibility, and actual Messages insertion still need a real shared session and
 native device verification.
+
+`bash Tests/run-auth-checks.sh /tmp/rally-extension-build` uses the simulator
+build's pinned Auth SDK and a running simulator to test email-code verification,
+the PKCE link callback, existing codes from another device, input validation,
+expired/used-code and rate-limit errors, email changes, and the verified session
+shared with Messages. Auth and organizer HTTP responses and secure storage are
+mocked; it sends no emails and uses no live accounts.

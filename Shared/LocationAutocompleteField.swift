@@ -3,19 +3,48 @@ import SwiftUI
 struct LocationAutocompleteField: View {
   let title: String
   @Binding var text: String
+  var cornerRadius: CGFloat = 6
   @StateObject private var model = LocationAutocompleteModel(service: GooglePlacesAutocomplete())
   @FocusState private var isEditing: Bool
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      TextField(title, text: $text)
-        .focused($isEditing)
-        .autocorrectionDisabled()
-        .submitLabel(.done)
-        .onSubmit {
-          isEditing = false
-          model.clear()
+      Text(title).font(.subheadline.weight(.semibold))
+      HStack(spacing: 0) {
+        TextField("Search for a place or address", text: $text)
+          .textFieldStyle(.plain)
+          .accessibilityLabel(title)
+          .focused($isEditing)
+          .autocorrectionDisabled()
+          .submitLabel(.done)
+          .padding(.vertical, 12)
+          .onSubmit {
+            isEditing = false
+            model.clear()
+          }
+        if !text.isEmpty {
+          Button {
+            text = ""
+            model.clear()
+            isEditing = true
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundStyle(.secondary)
+              .frame(width: 44, height: 44)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Clear \(title.lowercased())")
         }
+      }
+      .padding(.leading, 12)
+      .padding(.trailing, text.isEmpty ? 12 : 0)
+      .foregroundStyle(Color.black)
+      .background(Color.white, in: RoundedRectangle(cornerRadius: cornerRadius))
+      .overlay {
+        RoundedRectangle(cornerRadius: cornerRadius)
+          .stroke(Color.black.opacity(cornerRadius == 0 ? 1 : 0.25), lineWidth: 1)
+      }
       if model.isLoading {
         ProgressView("Finding places…").font(.caption)
       }

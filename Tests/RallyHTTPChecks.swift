@@ -195,6 +195,28 @@ func checkAccountContract() async throws {
   }
   let decoded = try await api.detail(id: id, token: "account-jwt")
   precondition(decoded.rally.candidates.count == 1 && decoded.responses[0].available == ["option"])
+  func resolvedLocation(mode: String, original: String?, final: String?) throws -> String? {
+    var envelope = try JSONSerialization.jsonObject(with: detail) as! [String: Any]
+    var rally = envelope["rally"] as! [String: Any]
+    rally["locationMode"] = mode
+    rally["location"] = original as Any? ?? NSNull()
+    rally["finalLocation"] = final as Any? ?? NSNull()
+    envelope["rally"] = rally
+    return try RallyAccountAPI.decoder().decode(
+      OrganizerDetail.self, from: JSONSerialization.data(withJSONObject: envelope)
+    ).rally.resolvedLocation
+  }
+  let locationCases: [(String, String?, String?, String?)] = [
+    ("specific", "To be decided", nil, nil),
+    ("open", "Old location", nil, nil),
+    ("specific", " Park ", "TO BE DECIDED", "Park"),
+    ("open", nil, "  Central Park  ", "Central Park"),
+  ]
+  for (mode, original, final, expected) in locationCases {
+    let location = try resolvedLocation(mode: mode, original: original, final: final)
+    precondition(
+      location == expected, "The editor must distinguish a real location from a placeholder")
+  }
   for action in ["save", "confirm", "cancel", "archive", "unarchive"] {
     StubHTTP.handler = { request in
       precondition(request.httpMethod == "PATCH")
@@ -216,7 +238,66 @@ func checkAccountContract() async throws {
     _ = try await api.update(id: id, action: "confirm", token: "account-jwt")
     preconditionFailure("Retried or accepted an uncertain mutation")
   } catch AccountAPIError.uncertainMutation {}
+
+  for location in ["", "  To be decided  "] {
+    StubHTTP.handler = { request in
+      let body = try JSONSerialization.jsonObject(with: requestBody(request)) as! [String: Any]
+      precondition(body["finalLocation"] is NSNull, "An undecided location must clear the override")
+      return (200, detail)
+    }
+    _ = try await api.update(id: id, action: "save", location: location, token: "account-jwt")
+  }
+
+  var deleteCalls = 0
+  StubHTTP.handler = { request in
+    deleteCalls += 1
+    precondition(request.httpMethod == "DELETE")
+    precondition(request.url?.path == "/api/v1/rallies/\(id)")
+    precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer account-jwt")
+    precondition(request.value(forHTTPHeaderField: "Accept") == "application/json")
+    precondition(request.value(forHTTPHeaderField: "Content-Type") == nil)
+    precondition(requestBody(request).isEmpty, "Deletion must not send a request body")
+    return (204, Data())
+  }
+  try await api.delete(id: id, token: "account-jwt")
+  precondition(deleteCalls == 1, "A 204 response must succeed without JSON decoding or a retry")
+  do {
+    try await api.delete(id: "not-a-uuid", token: "account-jwt")
+    preconditionFailure("Invalid deletion ID accepted")
+  } catch AccountAPIError.invalidResponse {}
+  precondition(deleteCalls == 1, "An invalid ID must not reach the server")
+
+  for status in [200, 302, 500] {
+    var calls = 0
+    StubHTTP.handler = { _ in
+      calls += 1
+      return (status, Data())
+    }
+    do {
+      try await api.delete(id: id, token: "account-jwt")
+      preconditionFailure("An ambiguous deletion response was accepted")
+    } catch AccountAPIError.uncertainDeletion {}
+    precondition(calls == 1, "An ambiguous deletion must not be retried automatically")
+  }
+  StubHTTP.handler = { _ in throw URLError(.timedOut) }
+  do {
+    try await api.delete(id: id, token: "account-jwt")
+    preconditionFailure("A deletion timeout was accepted")
+  } catch AccountAPIError.uncertainDeletion {}
+  StubHTTP.handler = { _ in (404, Data()) }
+  do {
+    try await api.delete(id: id, token: "account-jwt")
+    preconditionFailure("An unavailable Rally was accepted as a new deletion")
+  } catch AccountAPIError.notFound {}
+  do {
+    _ = try await api.detail(id: id, token: "account-jwt")
+    preconditionFailure("An unavailable Rally detail was accepted")
+  } catch AccountAPIError.notFound {}
   StubHTTP.handler = { _ in (401, Data()) }
+  do {
+    try await api.delete(id: id, token: "expired")
+    preconditionFailure("Deletion accepted an expired session")
+  } catch AccountAPIError.unauthorized {}
   do {
     _ = try await api.list(token: "expired")
     preconditionFailure("Accepted an expired session")
@@ -231,7 +312,7 @@ func checkAccountContract() async throws {
     precondition(!RallyAuthConfiguration.acceptsCallback(URL(string: url)!))
   }
   print(
-    "PASS: organizer detail timestamps, bearer authentication, PATCH fields, action-only lifecycle updates, uncertain mutations, callback routing"
+    "PASS: organizer locations, timestamps, bearer authentication, PATCH fields, DELETE contract and failure recovery, uncertain mutations, callback routing"
   )
 }
 

@@ -46,7 +46,9 @@ allowed public-link hosts.
 The callback URL must be allowed in your Supabase project's authentication
 redirect settings. If you change the development bundle identifiers, update the
 app's URL scheme, callback URL, and both targets' shared entitlements together.
-Open the sign-in email on the device that requested it.
+Sign in with the email's one-time code or open its link on the device that
+requested it. Choose **I already have a code** to enter a code requested on the
+website or another device, using the same email address.
 
 ### Optional location autocomplete
 
@@ -79,15 +81,24 @@ Run the integration and autocomplete checks:
 
 ```sh
 swiftc -module-cache-path /tmp/rally-swift-module-cache \
+  Shared/RallyLocation.swift \
   MessagesExtension/RallyIntegration.swift RallyMessagesApp/RallyAccountAPI.swift \
   RallyMessagesApp/RallyAuthConfiguration.swift Tests/RallyIntegrationChecks.swift \
   Tests/RallyHTTPChecks.swift -o /tmp/rally-integration-checks
 /tmp/rally-integration-checks
 
 swiftc -module-cache-path /tmp/rally-swift-module-cache \
-  Shared/LocationAutocompleteModel.swift Tests/LocationAutocompleteChecks.swift \
+  Shared/RallyLocation.swift Shared/LocationAutocompleteModel.swift \
+  Tests/LocationAutocompleteChecks.swift \
   -o /tmp/rally-autocomplete-checks
 /tmp/rally-autocomplete-checks
+```
+
+After the simulator build, run the mocked email link/code sign-in checks with
+a simulator already running:
+
+```sh
+bash Tests/run-auth-checks.sh /tmp/rally-extension-build
 ```
 
 Check Swift formatting:

@@ -199,9 +199,6 @@ struct MessageComposerView: View {
         }
       }
 
-      Text("Blank, “I don't know,” “IDK,” or “Not sure” becomes “Let's hang out.”")
-        .font(.caption)
-
       PrimaryButton(title: "Next") {
         step = .schedule
       }
@@ -295,16 +292,17 @@ struct MessageComposerView: View {
 
   private var locationStep: some View {
     VStack(alignment: .leading, spacing: 18) {
-      ChoiceButton(title: "Specific location", selected: locationMode == .specific) {
-        locationMode = .specific
-      }
-      ChoiceButton(title: "Leave open", selected: locationMode == .open) {
-        locationMode = .open
+      HStack(spacing: 8) {
+        ChoiceButton(title: "Specific location", selected: locationMode == .specific) {
+          locationMode = .specific
+        }
+        ChoiceButton(title: "Leave open", selected: locationMode == .open) {
+          locationMode = .open
+        }
       }
 
       if locationMode == .specific {
-        LocationAutocompleteField(title: "Location", text: $location)
-          .textFieldStyle(PlainBlackTextFieldStyle())
+        LocationAutocompleteField(title: "Location", text: $location, cornerRadius: 0)
       }
 
       PrimaryButton(title: "Review") {
@@ -349,8 +347,6 @@ struct MessageComposerView: View {
           showSignInPrompt = true
         }
       }
-      Text("Friends respond on the website. They don’t need an account or the extension.")
-        .font(.caption)
     }
   }
 

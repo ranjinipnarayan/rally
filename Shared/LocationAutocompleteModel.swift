@@ -31,8 +31,7 @@ final class LocationAutocompleteModel: ObservableObject {
 
   func search(_ text: String, isEditing: Bool) {
     clear()
-    let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard isEditing, query.count >= 3 else { return }
+    guard isEditing, let query = RallyLocation.value(text), query.count >= 3 else { return }
     guard query.count <= 200 else {
       message = "Keep your location under 200 characters."
       return

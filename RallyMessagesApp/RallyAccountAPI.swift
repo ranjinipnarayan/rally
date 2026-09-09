@@ -36,6 +36,11 @@ struct OrganizerDetail: Decodable {
     let finalTime: Date?
     let finalLocation: String?
     let candidates: [Candidate]
+
+    var resolvedLocation: String? {
+      RallyLocation.value(finalLocation)
+        ?? (locationMode == "specific" ? RallyLocation.value(location) : nil)
+    }
   }
   struct Candidate: Decodable, Identifiable {
     let id: String
@@ -77,16 +82,20 @@ enum RallyLabels {
 }
 
 enum AccountAPIError: LocalizedError {
-  case unauthorized, invalidResponse
+  case unauthorized, invalidResponse, notFound
   case server(String)
   case uncertainMutation
+  case uncertainDeletion
   var errorDescription: String? {
     switch self {
     case .unauthorized: "Your session expired. Please sign in again."
     case .invalidResponse: "Rally returned an unexpected response. Please refresh."
+    case .notFound: "This Rally is no longer available in your account."
     case .server(let message): message
     case .uncertainMutation:
       "The change may have saved. Refresh this Rally to check before trying again."
+    case .uncertainDeletion:
+      "The Rally may have been deleted. Refresh to check before trying again."
     }
   }
 }
@@ -145,11 +154,21 @@ struct RallyAccountAPI {
     if action == "save" || action == "confirm" {
       body["finalTime"] = time.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull()
       body["finalLocation"] =
-        location?.trimmingCharacters(in: .whitespacesAndNewlines) as Any? ?? NSNull()
+        RallyLocation.value(location) as Any? ?? NSNull()
     }
     return try await request(
       path: "rallies/\(id)", token: token,
       body: JSONSerialization.data(withJSONObject: body))
+  }
+
+  func delete(id: String, token: String) async throws {
+    guard UUID(uuidString: id) != nil else { throw AccountAPIError.invalidResponse }
+    do {
+      _ = try await requestData(
+        path: "rallies/\(id)", token: token, method: "DELETE", successStatus: 204)
+    } catch AccountAPIError.uncertainMutation {
+      throw AccountAPIError.uncertainDeletion
+    }
   }
 
   private final class NoRedirect: NSObject, URLSessionTaskDelegate {
@@ -170,9 +189,20 @@ struct RallyAccountAPI {
   private func request<T: Decodable>(path: String, token: String, body: Data? = nil) async throws
     -> T
   {
+    let data = try await requestData(
+      path: path, token: token, method: body == nil ? "GET" : "PATCH", body: body)
+    do { return try Self.decoder().decode(T.self, from: data) } catch {
+      throw body == nil ? AccountAPIError.invalidResponse : AccountAPIError.uncertainMutation
+    }
+  }
+
+  private func requestData(
+    path: String, token: String, method: String, body: Data? = nil, successStatus: Int = 200
+  ) async throws -> Data {
+    let isMutation = method != "GET"
     var request = URLRequest(
       url: baseURL.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData)
-    request.httpMethod = body == nil ? "GET" : "PATCH"
+    request.httpMethod = method
     request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     if let body {
@@ -182,21 +212,22 @@ struct RallyAccountAPI {
     let data: Data
     let response: URLResponse
     do { (data, response) = try await transport.data(for: request, delegate: NoRedirect()) } catch {
-      if body != nil { throw AccountAPIError.uncertainMutation }
+      if isMutation { throw AccountAPIError.uncertainMutation }
       throw error
     }
-    guard let http = response as? HTTPURLResponse else { throw AccountAPIError.invalidResponse }
+    guard let http = response as? HTTPURLResponse else {
+      throw isMutation ? AccountAPIError.uncertainMutation : AccountAPIError.invalidResponse
+    }
     if http.statusCode == 401 { throw AccountAPIError.unauthorized }
-    guard http.statusCode == 200 else {
-      if body != nil && (http.statusCode >= 500 || (300..<400).contains(http.statusCode)) {
+    if http.statusCode == 404 { throw AccountAPIError.notFound }
+    guard http.statusCode == successStatus else {
+      if isMutation && (http.statusCode >= 500 || (200..<400).contains(http.statusCode)) {
         throw AccountAPIError.uncertainMutation
       }
       let failure = try? JSONDecoder().decode(Failure.self, from: data)
       throw AccountAPIError.server(
         failure?.error.message ?? "Couldn’t load this Rally. Please refresh.")
     }
-    do { return try Self.decoder().decode(T.self, from: data) } catch {
-      throw body == nil ? AccountAPIError.invalidResponse : AccountAPIError.uncertainMutation
-    }
+    return data
   }
 }
