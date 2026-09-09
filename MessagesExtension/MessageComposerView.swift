@@ -303,7 +303,7 @@ struct MessageComposerView: View {
       }
 
       if locationMode == .specific {
-        TextField("Location", text: $location)
+        LocationAutocompleteField(title: "Location", text: $location)
           .textFieldStyle(PlainBlackTextFieldStyle())
       }
 

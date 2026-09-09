@@ -231,7 +231,7 @@ private struct RallyDetailView: View {
       if hasChosenTime {
         DatePicker("Final time", selection: $chosenTime).foregroundStyle(Color.primary)
       }
-      TextField("Final location", text: $chosenLocation)
+      LocationAutocompleteField(title: "Final location", text: $chosenLocation)
       ForEach(Array(Set(detail.responses.flatMap(\.suggestions))).sorted(), id: \.self) {
         suggestion in
         Button(suggestion) { chosenLocation = suggestion }

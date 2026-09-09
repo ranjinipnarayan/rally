@@ -9,7 +9,9 @@ Morning / Afternoon / Evening; edit, remove, and regenerate poll options;
 specific location or leave open. Empty specific locations become “To be decided.”
 Polls start with three options and can be reduced to one or two. Weekend options
 are the next Friday, Saturday, and Sunday together, matching the website.
-Place entry remains a text field; no Maps import or recommendations are added.
+Place entry now supports Google Places autocomplete while retaining manual text
+entry. The selected text uses the existing API location field. See README for
+the restricted-key setup; no recommendations or map views are added.
 
 ## API v1
 

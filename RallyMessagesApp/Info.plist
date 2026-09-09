@@ -13,6 +13,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>GooglePlacesAPIKey</key>
+	<string>$(GOOGLE_PLACES_API_KEY)</string>
 	<key>RallyKeychainAccessGroup</key>
 	<string>$(AppIdentifierPrefix)com.example.RallyMessages.shared</string>
 </dict>

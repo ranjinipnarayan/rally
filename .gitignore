@@ -4,3 +4,4 @@ DerivedData/
 build/
 *.xcuserstate
 xcuserdata/
+Configuration/Secrets.xcconfig

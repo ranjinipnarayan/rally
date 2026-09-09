@@ -19,6 +19,14 @@
 		A00000000000000000000013 /* RallyAccountModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013 /* RallyAccountModel.swift */; };
 		A00000000000000000000014 /* RallyIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* RallyIntegration.swift */; };
 		A00000000000000000000015 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = P00000000000000000000002 /* Auth */; };
+		A00000000000000000000020 = {isa = PBXBuildFile; fileRef = B00000000000000000000020; };
+		A00000000000000000000030 = {isa = PBXBuildFile; fileRef = B00000000000000000000020; };
+		A00000000000000000000021 = {isa = PBXBuildFile; fileRef = B00000000000000000000021; };
+		A00000000000000000000031 = {isa = PBXBuildFile; fileRef = B00000000000000000000021; };
+		A00000000000000000000022 = {isa = PBXBuildFile; fileRef = B00000000000000000000022; };
+		A00000000000000000000032 = {isa = PBXBuildFile; fileRef = B00000000000000000000022; };
+		A00000000000000000000044 = {isa = PBXBuildFile; productRef = P00000000000000000000004; };
+		A00000000000000000000045 = {isa = PBXBuildFile; productRef = P00000000000000000000005; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +66,10 @@
 		B00000000000000000000011 /* RallyAuthConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyAuthConfiguration.swift; sourceTree = "<group>"; };
 		B00000000000000000000012 /* RallyAccountAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyAccountAPI.swift; sourceTree = "<group>"; };
 		B00000000000000000000013 /* RallyAccountModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyAccountModel.swift; sourceTree = "<group>"; };
+		B00000000000000000000020 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationAutocompleteModel.swift; sourceTree = "<group>"; };
+		B00000000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooglePlacesAutocomplete.swift; sourceTree = "<group>"; };
+		B00000000000000000000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationAutocompleteField.swift; sourceTree = "<group>"; };
+		B00000000000000000000023 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration/Rally.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +77,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000044,
 				A00000000000000000000015 /* Auth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -73,6 +86,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000045,
 				A00000000000000000000006 /* Messages.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -84,6 +98,8 @@
 			isa = PBXGroup;
 			children = (
 				G00000000000000000000002 /* RallyMessagesApp */,
+				G00000000000000000000006,
+				B00000000000000000000023,
 				G00000000000000000000003 /* MessagesExtension */,
 				G00000000000000000000004 /* Frameworks */,
 				G00000000000000000000005 /* Products */,
@@ -130,6 +146,7 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		G00000000000000000000006 = {isa = PBXGroup; children = (B00000000000000000000020,B00000000000000000000021,B00000000000000000000022,); path = Shared; sourceTree = "<group>"; };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -150,6 +167,7 @@
 			name = RallyMessages;
 			packageProductDependencies = (
 				P00000000000000000000002 /* Auth */,
+				P00000000000000000000004,
 			);
 			productName = RallyMessages;
 			productReference = B00000000000000000000008 /* RallyMessages.app */;
@@ -168,6 +186,7 @@
 			dependencies = (
 			);
 			name = RallyMessagesExtension;
+			packageProductDependencies = (P00000000000000000000005,);
 			productName = RallyMessagesExtension;
 			productReference = B00000000000000000000009 /* RallyMessagesExtension.appex */;
 			productType = "com.apple.product-type.app-extension.messages";
@@ -200,6 +219,7 @@
 			);
 			mainGroup = G00000000000000000000001;
 			packageReferences = (
+				P00000000000000000000003,
 				P00000000000000000000001 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 			);
 			productRefGroup = G00000000000000000000005 /* Products */;
@@ -234,6 +254,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000022,
+				A00000000000000000000021,
+				A00000000000000000000020,
 				A00000000000000000000001 /* RallyMessagesApp.swift in Sources */,
 				A00000000000000000000002 /* ContentView.swift in Sources */,
 				A00000000000000000000014 /* RallyIntegration.swift in Sources */,
@@ -247,6 +270,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000032,
+				A00000000000000000000031,
+				A00000000000000000000030,
 				A00000000000000000000003 /* MessagesViewController.swift in Sources */,
 				A00000000000000000000004 /* MessageComposerView.swift in Sources */,
 				A00000000000000000000008 /* RallyIntegration.swift in Sources */,
@@ -266,6 +292,7 @@
 /* Begin XCBuildConfiguration section */
 		I00000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B00000000000000000000023;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -302,6 +329,7 @@
 		};
 		I00000000000000000000002 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = B00000000000000000000023;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -474,6 +502,7 @@
 				version = 2.55.1;
 			};
 		};
+		P00000000000000000000003 = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/googlemaps/ios-places-sdk"; requirement = {kind = exactVersion; version = 11.1.0; }; };
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -482,6 +511,8 @@
 			package = P00000000000000000000001 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Auth;
 		};
+		P00000000000000000000004 = {isa = XCSwiftPackageProductDependency; package = P00000000000000000000003; productName = GooglePlaces; };
+		P00000000000000000000005 = {isa = XCSwiftPackageProductDependency; package = P00000000000000000000003; productName = GooglePlaces; };
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D00000000000000000000001 /* Project object */;

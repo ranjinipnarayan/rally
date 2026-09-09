@@ -46,6 +46,39 @@ Only the public Supabase project URL/key are bundled. The app owns token refresh
 and logout. SDK sessions and the extension snapshot are stored in Keychain.
 Supabase Auth is pinned to 2.55.1 through Swift Package Manager and Package.resolved.
 
+## Google Places location autocomplete
+
+Both the Messages creation field and the organizer's final-location field use
+Google Places SDK 11.1.0 (Autocomplete New). Type at least three characters to
+search; selecting a suggestion fills the existing location text. Manual entry
+and the extension's Leave open option remain available. No device-location
+permission, map view, recommendations, or backend schema changes are needed.
+
+In your existing Google Cloud project:
+
+1. Enable billing and **Places API (New)** (`places.googleapis.com`).
+2. Create an API key with **iOS apps** restrictions allowing both
+   `com.example.RallyMessages` and `com.example.RallyMessages.MessagesExtension`.
+   Limit API access to **Places API (New)**. Use a separate key from any web key.
+3. Copy `Configuration/Secrets.xcconfig.example` to
+   `Configuration/Secrets.xcconfig` and set `GOOGLE_PLACES_API_KEY` there.
+   This local file is ignored by Git. CI can supply the same build setting.
+4. Rebuild the app and test suggestions in both targets. Without a key, the
+   field explains that search is unavailable and keeps manual entry working.
+
+Autocomplete waits 350 ms after typing, returns up to five suggestions, and
+discards results from superseded or dismissed searches. Searches use Google's
+IP-based bias without requesting GPS access. Results are temporary; only the
+user-selected location text is sent to Rally. This implementation needs no Place
+Details data, so it uses per-request autocomplete billing without session tokens.
+Google Maps attribution appears beneath the suggestions. Before public release,
+ensure Rally's public terms and privacy policy cover Google Places usage.
+
+References: [SDK setup](https://developers.google.com/maps/documentation/places/ios-sdk/config),
+[autocomplete](https://developers.google.com/maps/documentation/places/ios-sdk/place-autocomplete),
+[billing](https://developers.google.com/maps/documentation/places/ios-sdk/usage-and-billing),
+[attribution](https://developers.google.com/maps/documentation/places/ios-sdk/policies).
+
 ## Verification
 
 ```sh
@@ -59,7 +92,12 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
   Tests/RallyHTTPChecks.swift -o /tmp/rally-integration-checks
 /tmp/rally-integration-checks
 
-xcrun swift-format lint --strict --recursive MessagesExtension RallyMessagesApp Tests
+swiftc -module-cache-path /tmp/rally-swift-module-cache \
+  Shared/LocationAutocompleteModel.swift Tests/LocationAutocompleteChecks.swift \
+  -o /tmp/rally-autocomplete-checks
+/tmp/rally-autocomplete-checks
+
+xcrun swift-format lint --strict --recursive MessagesExtension RallyMessagesApp Shared Tests
 ```
 
 The unsigned build and simulated HTTP tests do not prove callback delivery,
@@ -71,7 +109,8 @@ On September 9, 2026, the signed iPhone build succeeded after the account holder
 resolved Apple's agreement requirement. Automatic provisioning created explicit
 profiles for both development bundle IDs. Signature verification passed, and
 both signed targets contain the matching App Group and shared Keychain group.
-Email callback delivery, runtime session sharing, and Messages insertion still
-require an end-to-end device run.
+The app was installed and launched on the connected iPhone. The organizer
+confirmed that email sign-in and the dashboard work. Runtime session sharing
+with the extension and Messages insertion still need end-to-end verification.
 
 App icons and production signing identifiers remain release preparation work.
