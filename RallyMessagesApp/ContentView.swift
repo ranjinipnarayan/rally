@@ -4,6 +4,7 @@ struct ContentView: View {
   @ObservedObject var model: RallyAccountModel
   @State private var email = ""
   @State private var code = ""
+  @State private var isShowingLogin = false
 
   var body: some View {
     NavigationStack {
@@ -11,12 +12,16 @@ struct ContentView: View {
         if model.loading {
           ProgressView("Loading Rally…")
         } else if model.account == nil {
-          login
+          welcome
         } else {
           dashboard
         }
       }
       .navigationTitle("Rally")
+      .navigationDestination(isPresented: $isShowingLogin) {
+        login
+          .navigationBarTitleDisplayMode(.inline)
+      }
     }
     .id(model.account?.id)
     .tint(.black)
@@ -28,15 +33,59 @@ struct ContentView: View {
     .onChange(of: model.account?.id) { _, _ in
       email = ""
       code = ""
+      isShowingLogin = false
     }
+    .onOpenURL { url in
+      if RallyAuthConfiguration.acceptsCallback(url) {
+        if model.account == nil { isShowingLogin = true }
+        Task { await model.handleCallback(url) }
+      } else if url.scheme?.lowercased() == "com.example.rallymessages", url.host == "signin" {
+        if model.account == nil { isShowingLogin = true }
+        Task { await model.refresh() }
+      }
+    }
+  }
+
+  private var welcome: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 28) {
+        Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 48))
+        Text("How to create a Rally").font(.largeTitle.bold())
+        creationStep(
+          1, title: "Open Messages",
+          detail: "Choose a conversation with a friend or group.")
+        creationStep(
+          2, title: "Tap + and choose Rally",
+          detail: "Find Rally in the apps for your conversation.")
+        creationStep(
+          3, title: "Make your plan",
+          detail: "Choose what, when, and where. Then send your Rally to the conversation.")
+        Button("See your rallies") { isShowingLogin = true }
+          .buttonStyle(RallyActionButtonStyle())
+        RallyAppShareFooter()
+      }
+      .padding(24)
+    }
+  }
+
+  private func creationStep(_ number: Int, title: String, detail: String) -> some View {
+    HStack(alignment: .top, spacing: 12) {
+      Text("\(number).")
+        .font(.headline)
+        .frame(width: 24, alignment: .leading)
+      VStack(alignment: .leading, spacing: 6) {
+        Text(title).font(.headline)
+        Text(detail).foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityElement(children: .combine)
   }
 
   private var login: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 48))
-        Text("Make a plan. Bring your friends.").font(.largeTitle.bold())
-        Text("Sign in to save drafts, share plans in Messages, and manage your Rallies.")
+        Text("Sign up or log in").font(.largeTitle.bold())
+        Text("Use your email to save drafts and manage your Rallies.")
         TextField("Email address", text: $email)
           .keyboardType(.emailAddress).textContentType(.emailAddress)
           .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -78,8 +127,7 @@ struct ContentView: View {
             .disabled(model.busy)
         }
         if let error = model.errorMessage { Text(error).foregroundStyle(.red) }
-        Divider()
-        Text("To create a plan: open a Messages conversation, tap +, and choose Rally.")
+        RallyAppShareFooter()
       }.padding(24)
     }
   }
@@ -90,6 +138,9 @@ struct ContentView: View {
       rallySection("Needs You", key: "needs_you")
       rallySection("Active", key: "active")
       rallySection("Past", key: "past")
+      Section {
+        RallyAppShareFooter()
+      }
       Section {
         VStack(alignment: .leading, spacing: 4) {
           if let email = model.account?.email {
@@ -182,12 +233,19 @@ private struct RallyDetailView: View {
     )
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
-      ToolbarItem(placement: .topBarTrailing) {
+      ToolbarItemGroup(placement: .topBarTrailing) {
         Button("Refresh", systemImage: "arrow.clockwise") {
           Task { await reload(preserveChoices: detail != nil && !needsRefresh) }
         }
         .labelStyle(.iconOnly)
         .disabled(busy || model.busy)
+        if let detail, detail.rally.publishedAt != nil {
+          ShareLink(item: detail.rally.publicUrl) {
+            Label("Share plan", systemImage: "square.and.arrow.up")
+          }
+          .labelStyle(.iconOnly)
+          .disabled(busy || model.busy)
+        }
       }
     }
     .task(id: rallyID) { await reload() }
@@ -281,21 +339,18 @@ private struct RallyDetailView: View {
           }
         }
       }
-      if detail.rally.publishedAt != nil {
-        Section("Share") {
-          if ["confirmed", "completed"].contains(detail.rally.status),
-            let message = detail.rally.finalMessage
+      if detail.rally.publishedAt != nil,
+        ["confirmed", "completed"].contains(detail.rally.status),
+        let message = detail.rally.finalMessage
+      {
+        Section("Plan summary") {
+          Text(message)
+          if detail.rally.resolvedLocation != nil,
+            let maps = detail.rally.mapsUrl, maps.scheme == "https",
+            maps.host == "www.google.com"
           {
-            Text(message)
-            ShareLink(item: message) { Label("Share plan", systemImage: "square.and.arrow.up") }
-            if detail.rally.resolvedLocation != nil,
-              let maps = detail.rally.mapsUrl, maps.scheme == "https",
-              maps.host == "www.google.com"
-            {
-              Link("Open in Maps", destination: maps)
-            }
+            Link("Open in Maps", destination: maps)
           }
-          Link("Open Rally in website", destination: detail.rally.publicUrl)
         }
       }
       Section {
@@ -308,6 +363,9 @@ private struct RallyDetailView: View {
         }
         .buttonStyle(RallyActionButtonStyle())
       }.disabled(busy || model.busy || needsRefresh)
+      Section {
+        RallyAppShareFooter()
+      }
     }
   }
 

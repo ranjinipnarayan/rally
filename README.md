@@ -24,7 +24,8 @@ Development requires macOS and Xcode. The app targets iOS 17 and later.
    `RallyMessagesExtension` targets. Configure bundle identifiers and provisioning
    profiles that support their App Groups and Keychain Sharing capabilities.
 3. Review the authentication configuration described below.
-4. Run the `RallyMessages` scheme on your iPhone and sign in.
+4. Run the `RallyMessages` scheme on your iPhone. The welcome screen explains how
+   to create a Rally; tap **See your rallies** to sign up or log in.
 5. Open a conversation in Messages and choose **+ → Rally** to create a plan.
 
 The extension inserts the plan's title and link into your message. Tap Send when

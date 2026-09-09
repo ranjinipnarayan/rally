@@ -116,16 +116,19 @@ struct MessageComposerView: View {
   }
 
   private var compactView: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Rally")
-        .font(.headline)
-      Text("Drive the plan out of the groupchat")
-        .font(.subheadline)
-      if !submission.isSignedIn {
-        Text("Open Rally to sign in when you’re ready to save or share.")
-          .font(.caption)
+    ScrollView {
+      VStack(alignment: .leading, spacing: 12) {
+        Text("Rally")
+          .font(.headline)
+        Text("Drive the plan out of the groupchat")
+          .font(.subheadline)
+        if !submission.isSignedIn {
+          Text("Open Rally to sign in when you’re ready to save or share.")
+            .font(.caption)
+        }
+        PrimaryButton(title: "Create a plan", action: onExpand)
+        RallyAppShareFooter()
       }
-      PrimaryButton(title: "Create a plan", action: onExpand)
     }
   }
 
@@ -162,6 +165,7 @@ struct MessageComposerView: View {
         if step != .review, let error = submission.errorMessage {
           Text(error).font(.caption)
         }
+        RallyAppShareFooter()
       }
     }
   }
