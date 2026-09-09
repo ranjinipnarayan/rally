@@ -1,91 +1,83 @@
-# Rally for iOS and Messages
+# Rally
 
-Rally uses the website backend as the source of truth. The iOS app provides
-email sign-in and organizer management; the Messages extension creates plans
-through a structured black-and-white interface. Recipients open public HTTPS
-links and reply on the website without an account or extension.
+Drive the plan out of the group chat.
 
-## Current flow
+Rally is an iOS app and iMessage extension for making plans with friends. Choose
+an activity, find a time and place, and share a Rally in your conversation.
+Friends respond on the [Rally website](https://rally-your-friends.com) without
+needing an account or the app.
 
-- Sign in to the app using an email magic link.
-- View Needs You, Active, and Past, with backend status, response counts, and next actions.
-- Review responses, save final choices, explicitly confirm, cancel, or archive.
-- Share the backend's final message and open the confirmed location in Maps.
-- In Messages, choose activity, specific/polled time, and specific/open location.
-- Save a private draft or create a public Rally, then insert its title and link.
-  You tap Send yourself. Saving or creating requires login.
+## Features
 
-Dashboard data refreshes on foreground entry and manual refresh. No local
-lifecycle, contact access, natural-language interpretation, or recommendations
-are used. Draft editing can continue in the current Messages composer or on
-the website. Unsaved composer state is in memory only.
+- Create plans in Messages with a specific time or a poll.
+- Find a location with Google Places autocomplete, or leave it open for suggestions.
+- Sign in by email to save private drafts and share plans.
+- Track plans under Needs You, Active, and Past.
+- Review responses, confirm the details, and share the final plan.
 
-## Development setup
+## Getting started
 
-Keep the existing development identifiers:
+Development requires macOS and Xcode. The app targets iOS 17 and later.
 
-| Setting | Value |
-| --- | --- |
-| App bundle ID | `com.example.RallyMessages` |
-| Extension bundle ID | `com.example.RallyMessages.MessagesExtension` |
-| Team | `NWUMX9X84W` |
-| App Group | `group.com.example.RallyMessages` |
-| Keychain group | `$(AppIdentifierPrefix)com.example.RallyMessages.shared` |
-| Email callback | `com.example.RallyMessages://auth/callback` |
+1. Open `RallyMessages.xcodeproj` and let Xcode resolve the Swift packages.
+2. Select your development team for both the `RallyMessages` and
+   `RallyMessagesExtension` targets. Configure bundle identifiers and provisioning
+   profiles that support their App Groups and Keychain Sharing capabilities.
+3. Review the authentication configuration described below.
+4. Run the `RallyMessages` scheme on your iPhone and sign in.
+5. Open a conversation in Messages and choose **+ → Rally** to create a plan.
 
-1. Add the exact callback to Supabase Authentication → URL Configuration →
-   Redirect URLs. Retain the existing website redirects. Open the magic link
-   on the device that requested it (PKCE).
-2. In Xcode, ensure both targets' provisioning profiles support the configured
-   App Group and Keychain Sharing entitlements. Xcode resolves AppIdentifierPrefix
-   from signing; do not substitute an assumed prefix.
-3. Run the RallyMessages scheme and sign in. Open Messages, a conversation,
-   then + → Rally. The extension rereads the shared access-token snapshot.
+The extension inserts the plan's title and link into your message. Tap Send when
+you are ready to share it. Save a draft before leaving an unfinished composer;
+unsaved changes are held in memory.
 
-Only the public Supabase project URL/key are bundled. The app owns token refresh
-and logout. SDK sessions and the extension snapshot are stored in Keychain.
-Supabase Auth is pinned to 2.55.1 through Swift Package Manager and Package.resolved.
+### Backend and sign-in
 
-## Google Places location autocomplete
+This repository contains the native clients. The website and backend live in
+[rally-your-friends](https://github.com/ranjinipnarayan/rally-your-friends).
 
-Both the Messages creation field and the organizer's final-location field use
-Google Places SDK 11.1.0 (Autocomplete New). Type at least three characters to
-search; selecting a suggestion fills the existing location text. Manual entry
-and the extension's Leave open option remain available. No device-location
-permission, map view, recommendations, or backend schema changes are needed.
+Email sign-in uses Supabase Auth. The project URL, publishable key, and callback
+URL are defined in [RallyAuthConfiguration.swift](RallyMessagesApp/RallyAuthConfiguration.swift).
+For your own backend, update that configuration and the API endpoints in
+[RallyIntegration.swift](MessagesExtension/RallyIntegration.swift) and
+[RallyAccountAPI.swift](RallyMessagesApp/RallyAccountAPI.swift), including the
+allowed public-link hosts.
 
-In your existing Google Cloud project:
+The callback URL must be allowed in your Supabase project's authentication
+redirect settings. If you change the development bundle identifiers, update the
+app's URL scheme, callback URL, and both targets' shared entitlements together.
+Open the sign-in email on the device that requested it.
 
-1. Enable billing and **Places API (New)** (`places.googleapis.com`).
-2. Create an API key with **iOS apps** restrictions allowing both
-   `com.example.RallyMessages` and `com.example.RallyMessages.MessagesExtension`.
-   Limit API access to **Places API (New)**. Use a separate key from any web key.
-3. Copy `Configuration/Secrets.xcconfig.example` to
-   `Configuration/Secrets.xcconfig` and set `GOOGLE_PLACES_API_KEY` there.
-   This local file is ignored by Git. CI can supply the same build setting.
-4. Rebuild the app and test suggestions in both targets. Without a key, the
-   field explains that search is unavailable and keeps manual entry working.
+### Optional location autocomplete
 
-Autocomplete waits 350 ms after typing, returns up to five suggestions, and
-discards results from superseded or dismissed searches. Searches use Google's
-IP-based bias without requesting GPS access. Results are temporary; only the
-user-selected location text is sent to Rally. This implementation needs no Place
-Details data, so it uses per-request autocomplete billing without session tokens.
-Google Maps attribution appears beneath the suggestions. Before public release,
-ensure Rally's public terms and privacy policy cover Google Places usage.
+To enable Google Places autocomplete:
 
-References: [SDK setup](https://developers.google.com/maps/documentation/places/ios-sdk/config),
-[autocomplete](https://developers.google.com/maps/documentation/places/ios-sdk/place-autocomplete),
-[billing](https://developers.google.com/maps/documentation/places/ios-sdk/usage-and-billing),
-[attribution](https://developers.google.com/maps/documentation/places/ios-sdk/policies).
+1. Enable billing and **Places API (New)** in your Google Cloud project.
+2. Create an API key restricted to **iOS apps**, allowing both targets' bundle
+   identifiers, and restrict API access to **Places API (New)**.
+3. Create your local configuration:
 
-## Verification
+   ```sh
+   cp Configuration/Secrets.xcconfig.example Configuration/Secrets.xcconfig
+   ```
+
+4. Set `GOOGLE_PLACES_API_KEY` in that file and rebuild.
+
+`Secrets.xcconfig` is ignored by Git. Manual location entry works without a key.
+
+## Development checks
+
+Build for the simulator without signing:
 
 ```sh
 xcodebuild -project RallyMessages.xcodeproj -scheme RallyMessages \
   -sdk iphonesimulator -configuration Debug \
   -derivedDataPath /tmp/rally-extension-build CODE_SIGNING_ALLOWED=NO build
+```
 
+Run the integration and autocomplete checks:
+
+```sh
 swiftc -module-cache-path /tmp/rally-swift-module-cache \
   MessagesExtension/RallyIntegration.swift RallyMessagesApp/RallyAccountAPI.swift \
   RallyMessagesApp/RallyAuthConfiguration.swift Tests/RallyIntegrationChecks.swift \
@@ -96,21 +88,14 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
   Shared/LocationAutocompleteModel.swift Tests/LocationAutocompleteChecks.swift \
   -o /tmp/rally-autocomplete-checks
 /tmp/rally-autocomplete-checks
+```
 
+Check Swift formatting:
+
+```sh
 xcrun swift-format lint --strict --recursive MessagesExtension RallyMessagesApp Shared Tests
 ```
 
-The unsigned build and simulated HTTP tests do not prove callback delivery,
-Keychain provisioning, email delivery, or actual Messages insertion. Verify those
-on a signed device, including sign-out, expired sessions, and returning to an
-unfinished composer. See [integration details](MessagesExtension/INTEGRATION.md).
-
-On September 9, 2026, the signed iPhone build succeeded after the account holder
-resolved Apple's agreement requirement. Automatic provisioning created explicit
-profiles for both development bundle IDs. Signature verification passed, and
-both signed targets contain the matching App Group and shared Keychain group.
-The app was installed and launched on the connected iPhone. The organizer
-confirmed that email sign-in and the dashboard work. Runtime session sharing
-with the extension and Messages insertion still need end-to-end verification.
-
-App icons and production signing identifiers remain release preparation work.
+Use a signed device to verify email callbacks, shared sign-in, and message
+insertion. See [integration details](MessagesExtension/INTEGRATION.md) for the
+API contract and extension behavior.

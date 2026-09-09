@@ -27,6 +27,8 @@
 		A00000000000000000000032 = {isa = PBXBuildFile; fileRef = B00000000000000000000022; };
 		A00000000000000000000044 = {isa = PBXBuildFile; productRef = P00000000000000000000004; };
 		A00000000000000000000045 = {isa = PBXBuildFile; productRef = P00000000000000000000005; };
+		A00000000000000000000050 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000050; };
+		A00000000000000000000051 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000051; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +72,8 @@
 		B00000000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GooglePlacesAutocomplete.swift; sourceTree = "<group>"; };
 		B00000000000000000000022 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationAutocompleteField.swift; sourceTree = "<group>"; };
 		B00000000000000000000023 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Configuration/Rally.xcconfig; sourceTree = "<group>"; };
+		B00000000000000000000050 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B00000000000000000000051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -109,6 +113,7 @@
 		G00000000000000000000002 /* RallyMessagesApp */ = {
 			isa = PBXGroup;
 			children = (
+				B00000000000000000000050 /* Assets.xcassets */,
 				B00000000000000000000001 /* RallyMessagesApp.swift */,
 				B00000000000000000000002 /* ContentView.swift */,
 				B00000000000000000000013 /* RallyAccountModel.swift */,
@@ -121,6 +126,7 @@
 		G00000000000000000000003 /* MessagesExtension */ = {
 			isa = PBXGroup;
 			children = (
+				B00000000000000000000051 /* Assets.xcassets */,
 				B00000000000000000000003 /* MessagesViewController.swift */,
 				B00000000000000000000004 /* MessageComposerView.swift */,
 				B00000000000000000000010 /* RallyIntegration.swift */,
@@ -237,6 +243,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000050 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,6 +251,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A00000000000000000000051 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -362,9 +370,10 @@
 		I00000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = RallyMessagesApp/RallyMessages.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = NWUMX9X84W;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = RallyMessagesApp/Info.plist;
@@ -387,9 +396,10 @@
 		I00000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = RallyMessagesApp/RallyMessages.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = NWUMX9X84W;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = RallyMessagesApp/Info.plist;
@@ -413,9 +423,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = MessagesBubbleIcon;
 				CODE_SIGN_ENTITLEMENTS = MessagesExtension/RallyMessagesExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = NWUMX9X84W;
 				INFOPLIST_FILE = MessagesExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -439,9 +450,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = MessagesBubbleIcon;
 				CODE_SIGN_ENTITLEMENTS = MessagesExtension/RallyMessagesExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = NWUMX9X84W;
 				INFOPLIST_FILE = MessagesExtension/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

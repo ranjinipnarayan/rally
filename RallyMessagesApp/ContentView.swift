@@ -52,11 +52,24 @@ struct ContentView: View {
       rallySection("Active", key: "active")
       rallySection("Past", key: "past")
       Section {
-        Link(
-          "My Rallies on the web",
-          destination: URL(string: "https://rally-your-friends.com/my-rallies")!)
-        if let email = model.account?.email { Text(email).foregroundStyle(.secondary) }
-        Button("Sign out") { Task { await model.signOut() } }.disabled(model.busy)
+        VStack(alignment: .leading, spacing: 4) {
+          if let email = model.account?.email {
+            Text(email).font(.caption).foregroundStyle(.secondary)
+          }
+          HStack {
+            Link(
+              "Rally website",
+              destination: URL(string: "https://rally-your-friends.com/my-rallies")!
+            )
+            .frame(minHeight: 44)
+            Spacer()
+            Button("Sign out") { Task { await model.signOut() } }
+              .frame(minHeight: 44)
+              .disabled(model.busy)
+          }
+          .font(.footnote)
+          .buttonStyle(.borderless)
+        }
       }
     }
     .refreshable { await model.refresh() }

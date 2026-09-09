@@ -119,7 +119,7 @@ struct MessageComposerView: View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Rally")
         .font(.headline)
-      Text("Create a plan for this conversation.")
+      Text("Drive the plan out of the groupchat")
         .font(.subheadline)
       if !submission.isSignedIn {
         Text("Open Rally to sign in when you’re ready to save or share.")
