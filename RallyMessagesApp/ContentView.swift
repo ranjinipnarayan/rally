@@ -214,6 +214,8 @@ private struct RallyDetailView: View {
   @State private var chosenLocation = ""
   @State private var pendingAction = ""
   @State private var showConfirmation = false
+  @State private var calendarEvent: RallyCalendarEvent?
+  @State private var didAddToCalendar = false
 
   var body: some View {
     Group {
@@ -276,6 +278,12 @@ private struct RallyDetailView: View {
       }
       .presentationDetents([.medium, .large])
     }
+    .sheet(item: $calendarEvent) { event in
+      RallyCalendarEditor(draft: event) { saved in
+        didAddToCalendar = saved
+        calendarEvent = nil
+      }
+    }
     .confirmationDialog(
       "\(pendingAction.capitalized) this Rally?", isPresented: $showConfirmation,
       titleVisibility: .visible
@@ -315,6 +323,20 @@ private struct RallyDetailView: View {
             Text(time.formatted(date: .complete, time: .shortened))
           }
           LabeledContent("Location", value: detail.rally.resolvedLocation ?? "To be decided")
+          if let event = RallyCalendarEvent(plan: detail.rally) {
+            Button {
+              didAddToCalendar = false
+              calendarEvent = event
+            } label: {
+              Label("Add to Calendar", systemImage: "calendar.badge.plus")
+            }
+            .buttonStyle(RallyActionButtonStyle())
+            .disabled(busy || model.busy || needsRefresh)
+            if didAddToCalendar {
+              Label("Added to Calendar", systemImage: "checkmark.circle")
+                .font(.footnote)
+            }
+          }
           if detail.rally.status == "draft" {
             Text(
               "This draft is private. Continue editing it in Messages, or finish it on the website."

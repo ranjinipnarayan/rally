@@ -127,7 +127,6 @@ struct MessageComposerView: View {
             .font(.caption)
         }
         PrimaryButton(title: "Create a plan", action: onExpand)
-        RallyAppShareFooter()
       }
     }
   }
@@ -165,7 +164,6 @@ struct MessageComposerView: View {
         if step != .review, let error = submission.errorMessage {
           Text(error).font(.caption)
         }
-        RallyAppShareFooter()
       }
     }
   }

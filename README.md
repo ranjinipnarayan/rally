@@ -14,6 +14,7 @@ needing an account or the app.
 - Sign in by email to save private drafts and share plans.
 - Track plans under Needs You, Active, and Past.
 - Review responses, confirm the details, and share the final plan.
+- Add confirmed plans to Calendar with the time, place, and Rally link filled in.
 
 ## Getting started
 
@@ -31,6 +32,12 @@ Development requires macOS and Xcode. The app targets iOS 17 and later.
 The extension inserts the plan's title and link into your message. Tap Send when
 you are ready to share it. Save a draft before leaving an unfinished composer;
 unsaved changes are held in memory.
+
+Once a plan is confirmed, open it in Rally and tap **Add to Calendar**. Review the
+event, choose a calendar, and tap **Add** to save, or **Cancel** to return to Rally.
+Events default to one hour; you can adjust the end time in the calendar editor.
+Calendar events are separate copies and do not automatically update if you cancel
+or delete a Rally.
 
 ### Backend and sign-in
 
@@ -93,6 +100,12 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
   Tests/LocationAutocompleteChecks.swift \
   -o /tmp/rally-autocomplete-checks
 /tmp/rally-autocomplete-checks
+
+swiftc -module-cache-path /tmp/rally-swift-module-cache \
+  Shared/RallyLocation.swift RallyMessagesApp/RallyAccountAPI.swift \
+  RallyMessagesApp/RallyCalendarEvent.swift Tests/RallyCalendarChecks.swift \
+  -o /tmp/rally-calendar-checks
+/tmp/rally-calendar-checks
 ```
 
 After the simulator build, run the mocked email link/code sign-in checks with
