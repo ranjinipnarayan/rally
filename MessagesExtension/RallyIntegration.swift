@@ -160,6 +160,7 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
   private struct CreateBody: Encodable {
     let activity: String
     let timeMode: String
+    let timeZone: String?
     let startsAt: String?
     let locationMode: String
     let location: String?
@@ -168,13 +169,15 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
     let action: String?
 
     enum CodingKeys: String, CodingKey {
-      case activity, timeMode, startsAt, locationMode, location, candidates, status, action
+      case activity, timeMode, timeZone, startsAt, locationMode, location, candidates, status,
+        action
     }
 
     func encode(to encoder: Encoder) throws {
       var container = encoder.container(keyedBy: CodingKeys.self)
       try container.encode(activity, forKey: .activity)
       try container.encode(timeMode, forKey: .timeMode)
+      try container.encodeIfPresent(timeZone, forKey: .timeZone)
       // These keys are required even when their values are null.
       try container.encode(startsAt, forKey: .startsAt)
       try container.encode(locationMode, forKey: .locationMode)
@@ -283,6 +286,7 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
     let body = CreateBody(
       activity: plan.activity.trimmingCharacters(in: .whitespacesAndNewlines),
       timeMode: plan.scheduleMode.rawValue,
+      timeZone: existingID == nil ? TimeZone.current.identifier : nil,
       startsAt: plan.specificDate.map { formatter.string(from: $0) },
       locationMode: plan.locationMode.rawValue,
       location: plan.locationMode == .open

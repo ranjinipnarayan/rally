@@ -28,6 +28,7 @@ API input mapping:
 | --- | --- |
 | `activity` | `activity` |
 | `scheduleMode` | `timeMode` (`specific` / `poll`) |
+| `TimeZone.current.identifier` | `timeZone` (new records only) |
 | `specificDate` | `startsAt` (ISO 8601 instant or null) |
 | `pollCandidates` | `candidates` (ISO 8601 instants) |
 | `locationMode` | `locationMode` (`specific` / `open`) |
@@ -38,6 +39,9 @@ and allows incomplete input. Saving an existing draft uses PATCH with
 `action: "save"`; creating a Rally from that draft uses `action: "publish"`.
 Only a confirmed Open response with a publication timestamp can be shared.
 The draft-save response retains only its ID, never a shareable link.
+Both open and draft creation POSTs include the device's current timezone identifier
+as `timeZone` so link previews can display local times. Existing draft save and
+publication PATCH requests omit `timeZone`; that API has not been extended.
 Absent time/location fields are encoded as explicit nulls. Dates are ISO 8601
 instants in UTC, and payloads are checked against the 16 KiB limit. HTTP 201 is required for new records, and HTTP 200 for draft updates/publication. The response decoder retains `id`, `title`, and
 `publicUrl`, ignoring the private creator token. The API derives ownership from
@@ -118,7 +122,8 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
 ```
 
 Checks cover all four HTTP creation branches, exact field names/nulls, bearer
-headers, UTC dates, public URL validation, HTTP errors, ambiguous timeouts,
+headers, UTC dates, creation timezone and its omission from draft PATCH requests,
+public URL validation, HTTP errors, ambiguous timeouts,
 session gates, account changes during requests, insertion retries, logged-out
 draft saves, private draft creation/update, and publication of the same draft.
 A read-only production `/me` probe returned the documented 401 without credentials.

@@ -62,8 +62,11 @@ func checkHTTPContract() async throws {
         let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
         precondition(
           Set(json.keys) == [
-            "activity", "timeMode", "startsAt", "locationMode", "location", "candidates", "status",
+            "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location",
+            "candidates",
+            "status",
           ])
+        precondition(json["timeZone"] as? String == TimeZone.current.identifier)
         precondition(json["status"] as? String == "open")
         precondition(json["timeMode"] as? String == timeMode.rawValue)
         precondition(json["locationMode"] as? String == locationMode.rawValue)
@@ -111,6 +114,12 @@ func checkHTTPContract() async throws {
   StubHTTP.handler = { request in
     let json = try bodyJSON(request)
     precondition(request.httpMethod == "POST" && json["status"] as? String == "draft")
+    precondition(
+      Set(json.keys) == [
+        "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location", "candidates",
+        "status",
+      ])
+    precondition(json["timeZone"] as? String == TimeZone.current.identifier)
     precondition(json["activity"] as? String == "" && json["location"] as? String == "")
     precondition((json["candidates"] as? [String])?.isEmpty == true)
     return (201, Data("{\"id\":\"\(draftID)\"}".utf8))
@@ -121,6 +130,7 @@ func checkHTTPContract() async throws {
     let json = try bodyJSON(request)
     precondition(request.httpMethod == "PATCH" && request.url?.lastPathComponent == draftID)
     precondition(json["action"] as? String == "save" && json["status"] == nil)
+    precondition(json["timeZone"] == nil, "Draft updates must omit timeZone, including null")
     return (200, Data("{\"rally\":{\"id\":\"\(draftID)\"}}".utf8))
   }
   _ = try await api.saveDraft(plan: incomplete, session: session, existingID: draftID)
@@ -128,6 +138,7 @@ func checkHTTPContract() async throws {
     let json = try bodyJSON(request)
     precondition(request.httpMethod == "PATCH" && json["action"] as? String == "publish")
     precondition(json["status"] == nil)
+    precondition(json["timeZone"] == nil, "Draft publication must omit timeZone, including null")
     return (
       200,
       Data(
@@ -172,7 +183,7 @@ func checkHTTPContract() async throws {
     preconditionFailure("Timeout accepted")
   } catch RallyIntegrationError.creationUncertain {}
   print(
-    "PASS: HTTP contract for all four branches, explicit nulls, bearer header, public link, error and timeout handling"
+    "PASS: HTTP contract for all four branches, creation timezone (\(TimeZone.current.identifier)), draft timezone omission, explicit nulls, bearer header, public link, error and timeout handling"
   )
 }
 
