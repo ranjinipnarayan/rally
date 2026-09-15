@@ -132,14 +132,7 @@ protocol RallyCreating {
   func create(plan: PlanPayload, session: OrganizerSession) async throws -> CreatedRally
 }
 
-protocol RallyDraftSaving {
-  func saveDraft(plan: PlanPayload, session: OrganizerSession, existingID: String?) async throws
-    -> String
-  func publishDraft(plan: PlanPayload, session: OrganizerSession, id: String) async throws
-    -> CreatedRally
-}
-
-struct RallyAPI: RallyCreating, RallyDraftSaving {
+struct RallyAPI: RallyCreating {
   private let transport: URLSession
   private let endpoint = URL(string: "https://rally-your-friends.com/api/v1/rallies")!
 
@@ -160,31 +153,28 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
   private struct CreateBody: Encodable {
     let activity: String
     let timeMode: String
-    let timeZone: String?
+    let timeZone: String
     let startsAt: String?
     let locationMode: String
     let location: String?
     let candidates: [String]
-    let status: String?
-    let action: String?
+    let status = "open"
 
     enum CodingKeys: String, CodingKey {
-      case activity, timeMode, timeZone, startsAt, locationMode, location, candidates, status,
-        action
+      case activity, timeMode, timeZone, startsAt, locationMode, location, candidates, status
     }
 
     func encode(to encoder: Encoder) throws {
       var container = encoder.container(keyedBy: CodingKeys.self)
       try container.encode(activity, forKey: .activity)
       try container.encode(timeMode, forKey: .timeMode)
-      try container.encodeIfPresent(timeZone, forKey: .timeZone)
+      try container.encode(timeZone, forKey: .timeZone)
       // These keys are required even when their values are null.
       try container.encode(startsAt, forKey: .startsAt)
       try container.encode(locationMode, forKey: .locationMode)
       try container.encode(location, forKey: .location)
       try container.encode(candidates, forKey: .candidates)
-      try container.encodeIfPresent(status, forKey: .status)
-      try container.encodeIfPresent(action, forKey: .action)
+      try container.encode(status, forKey: .status)
     }
   }
 
@@ -217,7 +207,7 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
 
   func create(plan: PlanPayload, session: OrganizerSession) async throws -> CreatedRally {
     try plan.validate()
-    let responseData = try await send(plan: plan, session: session, draft: false, existingID: nil)
+    let responseData = try await send(plan: plan, session: session)
     do {
       let saved = try JSONDecoder().decode(CreateResponse.self, from: responseData)
       let rally = CreatedRally(id: saved.id, title: saved.title, publicURL: saved.publicUrl)
@@ -228,78 +218,23 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
     }
   }
 
-  func saveDraft(plan: PlanPayload, session: OrganizerSession, existingID: String?) async throws
-    -> String
-  {
-    struct DraftIdentity: Decodable { let id: String }
-    struct DraftDetail: Decodable { let rally: DraftIdentity }
-    let data = try await send(plan: plan, session: session, draft: true, existingID: existingID)
-    do {
-      let id =
-        try existingID == nil
-        ? JSONDecoder().decode(DraftIdentity.self, from: data).id
-        : JSONDecoder().decode(DraftDetail.self, from: data).rally.id
-      guard UUID(uuidString: id) != nil else { throw RallyIntegrationError.creationUncertain }
-      return id
-    } catch {
-      throw RallyIntegrationError.creationUncertain
-    }
-  }
-
-  func publishDraft(plan: PlanPayload, session: OrganizerSession, id: String) async throws
-    -> CreatedRally
-  {
-    struct Detail: Decodable {
-      struct Rally: Decodable {
-        let id: String
-        let activity: String
-        let publicUrl: URL
-        let status: String
-        let publishedAt: String?
-      }
-      let rally: Rally
-    }
-    try plan.validate()
-    let data = try await send(plan: plan, session: session, draft: false, existingID: id)
-    do {
-      let saved = try JSONDecoder().decode(Detail.self, from: data).rally
-      guard saved.status == "open", saved.publishedAt != nil else {
-        throw RallyIntegrationError.creationUncertain
-      }
-      let result = CreatedRally(id: saved.id, title: saved.activity, publicURL: saved.publicUrl)
-      try result.validate()
-      return result
-    } catch { throw RallyIntegrationError.creationUncertain }
-  }
-
-  private func send(plan: PlanPayload, session: OrganizerSession, draft: Bool, existingID: String?)
-    async throws -> Data
-  {
+  private func send(plan: PlanPayload, session: OrganizerSession) async throws -> Data {
     guard session.isValid else { throw RallyIntegrationError.signInRequired }
-    guard plan.activity.utf16.count <= 200, plan.location.utf16.count <= 200,
-      plan.pollCandidates.count <= 10
-    else { throw RallyIntegrationError.invalidPlan }
-    if let existingID, UUID(uuidString: existingID) == nil {
-      throw RallyIntegrationError.invalidPlan
-    }
     let formatter = ISO8601DateFormatter()
     let body = CreateBody(
       activity: plan.activity.trimmingCharacters(in: .whitespacesAndNewlines),
       timeMode: plan.scheduleMode.rawValue,
-      timeZone: existingID == nil ? TimeZone.current.identifier : nil,
+      timeZone: TimeZone.current.identifier,
       startsAt: plan.specificDate.map { formatter.string(from: $0) },
       locationMode: plan.locationMode.rawValue,
       location: plan.locationMode == .open
         ? nil : plan.location.trimmingCharacters(in: .whitespacesAndNewlines),
-      candidates: plan.pollCandidates.map { formatter.string(from: $0) },
-      status: existingID == nil ? (draft ? "draft" : "open") : nil,
-      action: existingID == nil ? nil : (draft ? "save" : "publish")
+      candidates: plan.pollCandidates.map { formatter.string(from: $0) }
     )
     let data = try JSONEncoder().encode(body)
     guard data.count <= 16_384 else { throw RallyIntegrationError.invalidPlan }
-    let url = existingID.map { endpoint.appendingPathComponent($0) } ?? endpoint
-    var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
-    request.httpMethod = existingID == nil ? "POST" : "PATCH"
+    var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData)
+    request.httpMethod = "POST"
     request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -324,7 +259,7 @@ struct RallyAPI: RallyCreating, RallyDraftSaving {
           ?? "Rally couldn’t accept this plan. Check the details and try again."
       )
     }
-    guard http.statusCode == (existingID == nil ? 201 : 200) else {
+    guard http.statusCode == 201 else {
       throw RallyIntegrationError.creationUncertain
     }
     return responseData
@@ -361,9 +296,6 @@ final class RallySubmissionModel: ObservableObject {
   @Published private(set) var errorMessage: String?
   @Published private(set) var createdRally: CreatedRally?
   @Published private(set) var requiresCreationReview = false
-  @Published private(set) var savedDraftID: String?
-  private var draftReceipt: (owner: String, id: String)?
-  private var draftOutcomeUncertain = false
 
   private let sessions: OrganizerSessionProviding
   private let backend: RallyCreating
@@ -393,8 +325,7 @@ final class RallySubmissionModel: ObservableObject {
       createdRally =
         isSignedIn && session?.userID == attempt?.organizerID
         ? attempt?.result : nil
-      savedDraftID = isSignedIn && session?.userID == draftReceipt?.owner ? draftReceipt?.id : nil
-      requiresCreationReview = draftOutcomeUncertain || attempt?.outcomeUncertain == true
+      requiresCreationReview = attempt?.outcomeUncertain == true
       errorMessage =
         requiresCreationReview ? RallyIntegrationError.creationUncertain.localizedDescription : nil
     } catch {
@@ -404,62 +335,11 @@ final class RallySubmissionModel: ObservableObject {
     }
   }
 
-  func draftDidChange(_ plan: PlanPayload) {
+  func planDidChange(_ plan: PlanPayload) {
     guard !isSubmitting, !requiresCreationReview, attempt?.plan != plan else { return }
     attempt = nil
     createdRally = nil
     errorMessage = nil
-  }
-
-  func saveDraft(_ plan: PlanPayload) async {
-    guard !isSubmitting else { return }
-    isSubmitting = true
-    errorMessage = nil
-    defer { isSubmitting = false }
-    var savingStarted = false
-    var savingFinished = false
-    var savingOwner: String?
-    do {
-      guard let session = try sessions.session(), session.isValid else {
-        isSignedIn = false
-        throw RallyIntegrationError.signInRequired
-      }
-      isSignedIn = true
-      guard !requiresCreationReview else { throw RallyIntegrationError.creationUncertain }
-      guard let drafts = backend as? RallyDraftSaving else {
-        throw RallyIntegrationError.requestRejected(
-          "Draft saving is unavailable. Please try again later.")
-      }
-      let existingID = session.userID == draftReceipt?.owner ? draftReceipt?.id : nil
-      savingOwner = session.userID
-      savingStarted = true
-      let id = try await drafts.saveDraft(plan: plan, session: session, existingID: existingID)
-      savingFinished = true
-      draftReceipt = (session.userID, id)
-      guard let current = try sessions.session(), current.isValid else {
-        isSignedIn = false
-        throw RallyIntegrationError.signInRequired
-      }
-      guard current.userID == session.userID else { throw RallyIntegrationError.organizerChanged }
-      savedDraftID = id
-    } catch {
-      let failure = error as? RallyIntegrationError
-      if savingStarted && !savingFinished {
-        switch failure {
-        case .requestRejected, .invalidPlan, .signInRequired: break
-        default: draftOutcomeUncertain = true
-        }
-      }
-      if case .signInRequired = failure {
-        let latest = try? sessions.session()
-        isSignedIn = latest?.isValid == true && latest?.userID != savingOwner
-      }
-      if case .sessionUnavailable = failure { isSignedIn = false }
-      requiresCreationReview = draftOutcomeUncertain || attempt?.outcomeUncertain == true
-      errorMessage =
-        failure?.localizedDescription
-        ?? RallyIntegrationError.creationUncertain.localizedDescription
-    }
   }
 
   func submit(
@@ -491,16 +371,7 @@ final class RallySubmissionModel: ObservableObject {
       if currentAttempt.result == nil {
         try plan.validate()
         creationStarted = true
-        let result: CreatedRally
-        if let receipt = draftReceipt, receipt.owner == session.userID,
-          let drafts = backend as? RallyDraftSaving
-        {
-          result = try await drafts.publishDraft(plan: plan, session: session, id: receipt.id)
-          draftReceipt = nil
-          savedDraftID = nil
-        } else {
-          result = try await backend.create(plan: plan, session: session)
-        }
+        let result = try await backend.create(plan: plan, session: session)
         try result.validate()
         // Cache the saved result even if login changed during the request;
         // only the creating organizer can expose it or insert its link.
@@ -518,7 +389,7 @@ final class RallySubmissionModel: ObservableObject {
       guard let createdRally else { return }
       try await insert(createdRally)
     } catch {
-      // Keep the draft and saved result so insertion failures do not create
+      // Keep the plan and saved result so insertion failures do not create
       // another Rally. Never expose server response bodies or credentials.
       var integrationError = error as? RallyIntegrationError
       if creationStarted && attempt?.result == nil {
@@ -530,7 +401,7 @@ final class RallySubmissionModel: ObservableObject {
           integrationError = .creationUncertain
         }
       }
-      requiresCreationReview = draftOutcomeUncertain || attempt?.outcomeUncertain == true
+      requiresCreationReview = attempt?.outcomeUncertain == true
       if let failure = integrationError {
         switch failure {
         case .signInRequired:

@@ -11,8 +11,9 @@ needing an account or the app.
 
 - Create plans in Messages with a specific time or a poll.
 - Find a location with Google Places autocomplete, or leave it open for suggestions.
-- Sign in by email to save private drafts and share plans.
+- Sign in by email to create and share plans.
 - Track plans under Needs You, Active, and Past.
+- Swipe left on a Rally in any section to delete it after confirmation.
 - Review responses, confirm the details, and share the final plan.
 - Add confirmed plans to Calendar with the time, place, and Rally link filled in.
 
@@ -30,8 +31,8 @@ Development requires macOS and Xcode. The app targets iOS 17 and later.
 5. Open a conversation in Messages and choose **+ → Rally** to create a plan.
 
 The extension inserts the plan's title and link into your message. Tap Send when
-you are ready to share it. Save a draft before leaving an unfinished composer;
-unsaved changes are held in memory.
+you are ready to share it. Unfinished plans stay in memory while the extension
+remains open; there is no Save draft action in the app.
 
 Once a plan is confirmed, open it in Rally and tap **Add to Calendar**. Review the
 event, choose a calendar, and tap **Add** to save, or **Cancel** to return to Rally.

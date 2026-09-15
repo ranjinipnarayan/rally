@@ -5,10 +5,10 @@ request for a text bubble and a Helvetica Neue-inspired graphic character.
 The black side-profile car sits within an outlined message bubble on white.
 
 App master: `RallyMessagesApp/Assets.xcassets/AppIcon.appiconset/CarIcon.png`.
-Messages variants: `MessagesExtension/Assets.xcassets/MessagesBubbleIcon.stickersiconset`.
-The generated square is resized to 1024 × 1024. Messages variants use a centered
-4:3 crop, resized to the supported asset-catalog dimensions. All PNGs are opaque;
-iOS supplies the outer icon mask.
+Messages variants: `MessagesExtension/Assets.xcassets/Messages Icon.stickersiconset`.
+The generated square is resized to 1024 × 1024. Square Messages slots use the
+app master; rectangular slots use a centered 4:3 crop, resized to the supported
+asset-catalog dimensions. All PNGs are opaque; iOS supplies the outer icon mask.
 
 Final edit prompt:
 

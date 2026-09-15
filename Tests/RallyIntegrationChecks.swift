@@ -12,21 +12,7 @@ private final class TestSessions: OrganizerSessionProviding {
   }
 }
 
-private final class TestBackend: RallyCreating, RallyDraftSaving {
-  var draftCalls: [String?] = []
-  var publishedDrafts: [String] = []
-  func saveDraft(plan: PlanPayload, session: OrganizerSession, existingID: String?) async throws
-    -> String
-  {
-    draftCalls.append(existingID)
-    return existingID ?? "11111111-1111-4111-8111-111111111111"
-  }
-  func publishDraft(plan: PlanPayload, session: OrganizerSession, id: String) async throws
-    -> CreatedRally
-  {
-    publishedDrafts.append(id)
-    return result
-  }
+private final class TestBackend: RallyCreating {
   var calls: [PlanPayload] = []
   var shouldFail = false
   var error: RallyIntegrationError?
@@ -96,27 +82,6 @@ struct RallyIntegrationChecks {
     model.refreshSession()
     precondition(model.isSignedIn)
 
-    let draftSessions = TestSessions()
-    draftSessions.value = nil
-    let draftBackend = TestBackend()
-    let draftModel = RallySubmissionModel(sessions: draftSessions, backend: draftBackend)
-    let incomplete = PlanPayload(
-      activity: "", scheduleMode: .poll, specificDate: nil,
-      pollCandidates: [], locationMode: .specific, location: "")
-    await draftModel.saveDraft(incomplete)
-    precondition(!draftModel.isSignedIn && draftBackend.draftCalls.isEmpty)
-    precondition(
-      draftModel.errorMessage == RallyIntegrationError.signInRequired.localizedDescription)
-    draftSessions.value = sessions.value
-    await draftModel.saveDraft(incomplete)
-    precondition(draftModel.savedDraftID != nil && draftModel.createdRally == nil)
-    await draftModel.saveDraft(plan)
-    precondition(
-      draftBackend.draftCalls.count == 2 && draftBackend.draftCalls[1] == draftModel.savedDraftID)
-    await draftModel.submit(plan) { _ in }
-    precondition(draftBackend.calls.isEmpty && draftBackend.publishedDrafts.count == 1)
-    precondition(draftModel.savedDraftID == nil && draftModel.createdRally != nil)
-
     var insertions = 0
     await model.submit(plan) { _ in
       throw RallyIntegrationError.conversationUnavailable
@@ -132,7 +97,7 @@ struct RallyIntegrationChecks {
     let changed = PlanPayload(
       activity: "Coffee", scheduleMode: .specific, specificDate: future,
       pollCandidates: [], locationMode: .specific, location: "Cafe")
-    model.draftDidChange(changed)
+    model.planDidChange(changed)
     precondition(model.createdRally == nil)
     backend.shouldFail = true
     await model.submit(changed) { _ in preconditionFailure("No insert after API failure") }
@@ -193,7 +158,7 @@ struct RallyIntegrationChecks {
     await uncertainModel.submit(plan) { _ in preconditionFailure("Unknown creation shared") }
     precondition(uncertainModel.requiresCreationReview)
     uncertainModel.refreshSession()
-    uncertainModel.draftDidChange(changed)
+    uncertainModel.planDidChange(changed)
     await uncertainModel.submit(changed) { _ in preconditionFailure("Ambiguous POST retried") }
     precondition(uncertainBackend.calls.count == 1 && uncertainModel.requiresCreationReview)
 

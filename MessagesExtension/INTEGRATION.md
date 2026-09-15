@@ -28,23 +28,21 @@ API input mapping:
 | --- | --- |
 | `activity` | `activity` |
 | `scheduleMode` | `timeMode` (`specific` / `poll`) |
-| `TimeZone.current.identifier` | `timeZone` (new records only) |
+| `TimeZone.current.identifier` | `timeZone` |
 | `specificDate` | `startsAt` (ISO 8601 instant or null) |
 | `pollCandidates` | `candidates` (ISO 8601 instants) |
 | `locationMode` | `locationMode` (`specific` / `open`) |
 | `location` | `location` (null when open) |
 
-Creating a new Rally sends `status: "open"`. Save draft sends `status: "draft"`
-and allows incomplete input. Saving an existing draft uses PATCH with
-`action: "save"`; creating a Rally from that draft uses `action: "publish"`.
-Only a confirmed Open response with a publication timestamp can be shared.
-The draft-save response retains only its ID, never a shareable link.
-Both open and draft creation POSTs include the device's current timezone identifier
-as `timeZone` so link previews can display local times. Existing draft save and
-publication PATCH requests omit `timeZone`; that API has not been extended.
+Creating a Rally sends `status: "open"` and requires a valid plan. Creation POSTs
+include the device's current timezone identifier as `timeZone` so link previews
+can display local times. The extension creates plans directly; it does not save
+or publish drafts. Existing drafts in the organizer app can be finished on the
+website.
 Absent time/location fields are encoded as explicit nulls. Dates are ISO 8601
-instants in UTC, and payloads are checked against the 16 KiB limit. HTTP 201 is required for new records, and HTTP 200 for draft updates/publication. The response decoder retains `id`, `title`, and
-`publicUrl`, ignoring the private creator token. The API derives ownership from
+instants in UTC, and payloads are checked against the 16 KiB limit. Creation
+requires HTTP 201. The response decoder retains `id`, `title`, and `publicUrl`,
+ignoring the private creator token. The API derives ownership from
 authentication and owns lifecycle, `next_action`, responses, and finalization.
 
 The organizer app deletes a Rally only after an explicit confirmation. It sends
@@ -64,7 +62,7 @@ Once creation succeeds, message-insertion retries reuse that saved result withou
 another POST. A network error, 5xx, unexpected status, or unreadable success
 response may follow a saved creation, so the extension blocks further POSTs in
 that composer and offers “Review My Rallies” on the website. It does not assume
-failure or silently create another Rally. This guard and the unsaved draft are
+failure or silently create another Rally. This guard and the unfinished plan are
 in memory only; after restarting, check the organizer's Rallies before recreating
 an uncertain plan. Durable cross-process recovery is not implemented.
 
@@ -89,10 +87,10 @@ The extension reads an access-token snapshot from the shared Keychain;
 only the app refreshes the session. Tokens use WhenUnlockedThisDeviceOnly
 accessibility and are never stored in defaults, links, or logs.
 
-The form can be filled out before sign-in. Save draft and Create Rally prompt
+The form can be filled out before sign-in. Create Rally prompts
 “Open Rally to sign in” if no valid shared session exists. The alert opens the
 containing app. Returning to Messages rereads the shared session. The organizer
-then taps Save draft or Create Rally again. Unsaved form state survives only
+then taps Create Rally again. Unsaved form state survives only
 while the extension process remains alive.
 
 Both targets include App Group and Keychain entitlements. Provisioning and the
@@ -122,10 +120,9 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
 ```
 
 Checks cover all four HTTP creation branches, exact field names/nulls, bearer
-headers, UTC dates, creation timezone and its omission from draft PATCH requests,
-public URL validation, HTTP errors, ambiguous timeouts,
-session gates, account changes during requests, insertion retries, logged-out
-draft saves, private draft creation/update, and publication of the same draft.
+headers, UTC dates, creation timezone and its omission from organizer updates,
+incomplete-plan rejection, public URL validation, HTTP errors, ambiguous timeouts,
+session gates, account changes during requests, and insertion retries.
 A read-only production `/me` probe returned the documented 401 without credentials.
 Authenticated production creation, shared Keychain provisioning, organizer-app
 visibility, and actual Messages insertion still need a real shared session and

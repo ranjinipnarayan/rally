@@ -5,6 +5,10 @@ struct ContentView: View {
   @State private var email = ""
   @State private var code = ""
   @State private var isShowingLogin = false
+  @State private var rallyToDelete: OrganizerRally?
+  @State private var showDeleteConfirmation = false
+  @State private var showDeleteError = false
+  @State private var deleteError = ""
 
   var body: some View {
     NavigationStack {
@@ -34,6 +38,10 @@ struct ContentView: View {
       email = ""
       code = ""
       isShowingLogin = false
+      rallyToDelete = nil
+      showDeleteConfirmation = false
+      showDeleteError = false
+      deleteError = ""
     }
     .onOpenURL { url in
       if RallyAuthConfiguration.acceptsCallback(url) {
@@ -85,7 +93,7 @@ struct ContentView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         Text("Sign up or log in").font(.largeTitle.bold())
-        Text("Use your email to save drafts and manage your Rallies.")
+        Text("Use your email to create and manage your Rallies.")
         TextField("Email address", text: $email)
           .keyboardType(.emailAddress).textContentType(.emailAddress)
           .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -163,6 +171,25 @@ struct ContentView: View {
       }
     }
     .refreshable { await model.refresh() }
+    .confirmationDialog(
+      "Delete this Rally?", isPresented: $showDeleteConfirmation,
+      titleVisibility: .visible, presenting: rallyToDelete
+    ) { rally in
+      Button("Delete Rally", role: .destructive) {
+        Task { await deleteRally(rally) }
+      }
+      .disabled(model.busy)
+      Button("Cancel", role: .cancel) { rallyToDelete = nil }
+    } message: { rally in
+      Text(
+        "This permanently deletes “\(rally.activity.isEmpty ? "Untitled draft" : rally.activity)” and all its responses. This can’t be undone."
+      )
+    }
+    .alert("Couldn’t delete Rally", isPresented: $showDeleteError) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(deleteError)
+    }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
@@ -187,13 +214,32 @@ struct ContentView: View {
             if let time = rally.time { Text(time.formatted(date: .abbreviated, time: .shortened)) }
             if let location = rally.location { Text(location) }
             if rally.status == "draft" {
-              Text("Finish draft").font(.subheadline.bold())
+              Text("Finish on website").font(.subheadline.bold())
             } else if rally.nextAction != "none" {
               Text(RallyLabels.nextAction(rally.nextAction)).font(.subheadline.bold())
             }
           }.padding(.vertical, 4)
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+          Button("Delete", systemImage: "trash") {
+            rallyToDelete = rally
+            showDeleteConfirmation = true
+          }
+          .tint(.red)
+          .disabled(model.busy)
+        }
       }
+    }
+  }
+
+  private func deleteRally(_ rally: OrganizerRally) async {
+    guard !model.busy, model.rallies.contains(where: { $0.id == rally.id }) else { return }
+    rallyToDelete = nil
+    do {
+      try await model.delete(id: rally.id)
+    } catch {
+      deleteError = model.message(for: error)
+      showDeleteError = true
     }
   }
 }
@@ -339,7 +385,7 @@ private struct RallyDetailView: View {
           }
           if detail.rally.status == "draft" {
             Text(
-              "This draft is private. Continue editing it in Messages, or finish it on the website."
+              "This draft is private. Open the website to finish it."
             )
             Link(
               "Open My Rallies",

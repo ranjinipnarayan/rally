@@ -53,9 +53,7 @@ struct MessageComposerView: View {
   let onSendPlan: (PlanPayload) -> Void
 
   @State private var showSignInPrompt = false
-  @State private var showDraftSaved = false
   @State private var showOpenAppHelp = false
-  @State private var signInReason = "save your draft"
 
   @State private var step: ComposerStep = .activity
   @State private var activity = ""
@@ -90,7 +88,7 @@ struct MessageComposerView: View {
     // Set the presentation's appearance as well as SwiftUI's environment.
     // Native date-picker labels and popovers must match our white background.
     .preferredColorScheme(.light)
-    .alert("Sign in to \(signInReason)", isPresented: $showSignInPrompt) {
+    .alert("Sign in to create your Rally", isPresented: $showSignInPrompt) {
       Button("Open Rally") {
         Task { showOpenAppHelp = !(await onSignIn()) }
       }
@@ -102,32 +100,31 @@ struct MessageComposerView: View {
       Button("OK", role: .cancel) {}
     } message: {
       Text(
-        "Messages couldn’t open Rally. Open the Rally app, sign in, then return here to save or share your plan."
+        "Messages couldn’t open Rally. Open the Rally app, sign in, then return here to create your Rally."
       )
     }
-    .alert("Draft saved", isPresented: $showDraftSaved) {
-      Button("OK", role: .cancel) {}
-    } message: {
-      Text("Your draft is saved to your account. It hasn’t been shared.")
-    }
     .onChange(of: currentPayload) { _, plan in
-      submission.draftDidChange(plan)
+      submission.planDidChange(plan)
     }
   }
 
   private var compactView: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 12) {
-        Text("Rally")
-          .font(.headline)
-        Text("Drive the plan out of the groupchat")
-          .font(.subheadline)
-        if !submission.isSignedIn {
-          Text("Open Rally to sign in when you’re ready to save or share.")
-            .font(.caption)
+    GeometryReader { geometry in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 12) {
+          Text("Rally")
+            .font(.headline)
+          Text("Drive the plan out of the groupchat")
+            .font(.subheadline)
+          if !submission.isSignedIn {
+            Text("Open Rally to sign in when you’re ready to create your Rally.")
+              .font(.caption)
+          }
+          PrimaryButton(title: "Create a plan", action: onExpand)
         }
-        PrimaryButton(title: "Create a plan", action: onExpand)
+        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
       }
+      .scrollBounceBehavior(.basedOnSize)
     }
   }
 
@@ -150,16 +147,6 @@ struct MessageComposerView: View {
           .font(.title2.bold())
 
         stepContent
-
-        Divider().overlay(Color.black)
-        Button(submission.isSubmitting ? "Saving…" : "Save draft") {
-          saveDraft()
-        }
-        .font(.headline)
-        .frame(minHeight: 44)
-        .disabled(
-          submission.isSubmitting || submission.requiresCreationReview
-            || submission.createdRally != nil)
 
         if step != .review, let error = submission.errorMessage {
           Text(error).font(.caption)
@@ -345,36 +332,8 @@ struct MessageComposerView: View {
         if submission.isSignedIn {
           onSendPlan(currentPayload)
         } else {
-          signInReason = "create your Rally"
           showSignInPrompt = true
         }
-      }
-    }
-  }
-
-  private func saveDraft() {
-    submission.refreshSession()
-    guard submission.isSignedIn else {
-      signInReason = "save your draft"
-      showSignInPrompt = true
-      return
-    }
-    let draft = PlanPayload(
-      activity: activity.trimmingCharacters(in: .whitespacesAndNewlines),
-      scheduleMode: scheduleMode,
-      specificDate: scheduleMode == .specific ? specificDate : nil,
-      pollCandidates: scheduleMode == .poll ? pollCandidates.map(\.date) : [],
-      locationMode: locationMode,
-      location: locationMode == .specific
-        ? location.trimmingCharacters(in: .whitespacesAndNewlines) : ""
-    )
-    Task { @MainActor in
-      await submission.saveDraft(draft)
-      if !submission.isSignedIn {
-        signInReason = "save your draft"
-        showSignInPrompt = true
-      } else if submission.errorMessage == nil {
-        showDraftSaved = true
       }
     }
   }

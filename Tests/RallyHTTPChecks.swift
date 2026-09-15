@@ -93,61 +93,16 @@ func checkHTTPContract() async throws {
   let plan = PlanPayload(
     activity: "Dinner", scheduleMode: .specific, specificDate: date,
     pollCandidates: [], locationMode: .open, location: "")
-  let draftID = "11111111-1111-4111-8111-111111111111"
   let incomplete = PlanPayload(
     activity: "", scheduleMode: .poll, specificDate: nil,
     pollCandidates: [], locationMode: .specific, location: "")
-  func bodyJSON(_ request: URLRequest) throws -> [String: Any] {
-    var data = request.httpBody ?? Data()
-    if let stream = request.httpBodyStream {
-      stream.open()
-      defer { stream.close() }
-      var buffer = [UInt8](repeating: 0, count: 1024)
-      while stream.hasBytesAvailable {
-        let count = stream.read(&buffer, maxLength: buffer.count)
-        guard count > 0 else { break }
-        data.append(contentsOf: buffer.prefix(count))
-      }
-    }
-    return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+  StubHTTP.handler = { _ in
+    preconditionFailure("An incomplete plan must not reach the server")
   }
-  StubHTTP.handler = { request in
-    let json = try bodyJSON(request)
-    precondition(request.httpMethod == "POST" && json["status"] as? String == "draft")
-    precondition(
-      Set(json.keys) == [
-        "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location", "candidates",
-        "status",
-      ])
-    precondition(json["timeZone"] as? String == TimeZone.current.identifier)
-    precondition(json["activity"] as? String == "" && json["location"] as? String == "")
-    precondition((json["candidates"] as? [String])?.isEmpty == true)
-    return (201, Data("{\"id\":\"\(draftID)\"}".utf8))
-  }
-  let savedID = try await api.saveDraft(plan: incomplete, session: session, existingID: nil)
-  precondition(savedID == draftID)
-  StubHTTP.handler = { request in
-    let json = try bodyJSON(request)
-    precondition(request.httpMethod == "PATCH" && request.url?.lastPathComponent == draftID)
-    precondition(json["action"] as? String == "save" && json["status"] == nil)
-    precondition(json["timeZone"] == nil, "Draft updates must omit timeZone, including null")
-    return (200, Data("{\"rally\":{\"id\":\"\(draftID)\"}}".utf8))
-  }
-  _ = try await api.saveDraft(plan: incomplete, session: session, existingID: draftID)
-  StubHTTP.handler = { request in
-    let json = try bodyJSON(request)
-    precondition(request.httpMethod == "PATCH" && json["action"] as? String == "publish")
-    precondition(json["status"] == nil)
-    precondition(json["timeZone"] == nil, "Draft publication must omit timeZone, including null")
-    return (
-      200,
-      Data(
-        "{\"rally\":{\"id\":\"\(draftID)\",\"activity\":\"Dinner\",\"publicUrl\":\"https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789\",\"status\":\"open\",\"publishedAt\":\"2026-09-09T00:00:00Z\"}}"
-          .utf8)
-    )
-  }
-  let published = try await api.publishDraft(plan: plan, session: session, id: draftID)
-  precondition(published.id == draftID)
+  do {
+    _ = try await api.create(plan: incomplete, session: session)
+    preconditionFailure("An incomplete plan was created")
+  } catch RallyIntegrationError.invalidPlan {}
   for status in [400, 401, 409, 413, 503, 302, 200] {
     StubHTTP.handler = { _ in
       (status, Data(#"{"error":{"code":"invalid_request","message":"Check your plan."}}"#.utf8))
@@ -183,7 +138,7 @@ func checkHTTPContract() async throws {
     preconditionFailure("Timeout accepted")
   } catch RallyIntegrationError.creationUncertain {}
   print(
-    "PASS: HTTP contract for all four branches, creation timezone (\(TimeZone.current.identifier)), draft timezone omission, explicit nulls, bearer header, public link, error and timeout handling"
+    "PASS: HTTP contract for all four branches, creation timezone (\(TimeZone.current.identifier)), incomplete-plan rejection, explicit nulls, bearer header, public link, error and timeout handling"
   )
 }
 
@@ -234,6 +189,7 @@ func checkAccountContract() async throws {
       precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
       let body = try JSONSerialization.jsonObject(with: requestBody(request)) as! [String: Any]
       precondition(body["action"] as? String == action)
+      precondition(body["timeZone"] == nil, "Organizer updates must omit timeZone")
       if action == "save" || action == "confirm" {
         precondition(body["finalTime"] is NSNull)
         precondition(body["finalLocation"] as? String == "Park")
