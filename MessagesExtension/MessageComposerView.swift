@@ -87,8 +87,8 @@ struct MessageComposerView: View {
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
           HStack(spacing: 0) {
-            Text(("rally").lowercased()).font(.system(size: 20, weight: .semibold))
-            Text((".").lowercased()).font(.system(size: 20, weight: .semibold)).foregroundStyle(
+            Text(("rally").lowercased()).font(.title3.weight(.semibold))
+            Text((".").lowercased()).font(.title3.weight(.semibold)).foregroundStyle(
               RallyDesign.red)
             RallyFinish().padding(.leading, 10)
           }
@@ -96,7 +96,7 @@ struct MessageComposerView: View {
             .font(.subheadline)
           if !submission.isSignedIn {
             Text(("open rally to sign in when you’re ready to create your rally.").lowercased())
-              .font(.caption)
+              .font(.subheadline)
           }
           PrimaryButton(title: "Create a plan", action: onExpand)
         }
@@ -125,19 +125,19 @@ struct MessageComposerView: View {
           }
           Spacer()
           Text(("step \(step.rawValue + 1) of 4").lowercased())
-            .font(.caption)
+            .font(.subheadline)
         }
 
         RallyJourney(step: step.rawValue)
         HStack {
-          Text(step.title.lowercased()).font(.system(size: 20, weight: .semibold))
+          Text(step.title.lowercased()).font(.title3.weight(.semibold))
           if step == .review { RallyFinish() }
         }
 
         stepContent
 
         if step != .review, let error = submission.errorMessage {
-          Text((error).lowercased()).font(.caption)
+          Text((error).lowercased()).font(.subheadline)
         }
       }
     }
@@ -165,7 +165,7 @@ struct MessageComposerView: View {
         .textFieldStyle(RallyTextFieldStyle())
 
       Text(("suggestions").lowercased())
-        .font(.subheadline.bold())
+        .font(.body.weight(.semibold))
 
       FlowLayout(spacing: 8) {
         ForEach(activitySuggestions, id: \.self) { suggestion in
@@ -231,7 +231,7 @@ struct MessageComposerView: View {
             ("timezone · \(TimeZonePicker.name(for: schedule.timeZone).lowercased())").lowercased())
           Image(systemName: "chevron.right").font(.system(size: 9))
         }
-        .font(.caption)
+        .font(.subheadline)
         .foregroundStyle(RallyDesign.secondary)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
@@ -334,7 +334,7 @@ struct MessageComposerView: View {
       Divider().overlay(RallyDesign.border)
 
       if let error = submission.errorMessage {
-        Text((error).lowercased()).font(.caption)
+        Text((error).lowercased()).font(.subheadline)
       }
       if submission.requiresCreationReview {
         Link(
@@ -344,7 +344,7 @@ struct MessageComposerView: View {
         .font(.headline)
       }
       if submission.createdRally != nil {
-        Text(("rally saved. add its link to your conversation.").lowercased()).font(.caption)
+        Text(("rally saved. add its link to your conversation.").lowercased()).font(.subheadline)
       }
       PrimaryButton(
         title: submission.isSubmitting
@@ -435,7 +435,7 @@ private struct ChoiceButton: View {
   var body: some View {
     Button(action: action) {
       Text(title.lowercased())
-        .font(.system(size: 12))
+        .font(.subheadline)
         .foregroundStyle(selected ? Color.white : RallyDesign.ink)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -455,7 +455,7 @@ private struct ReviewRow: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
       Text(label.lowercased())
-        .font(.caption.bold())
+        .font(.body.weight(.semibold))
       Text(value.lowercased())
         .font(.body)
     }

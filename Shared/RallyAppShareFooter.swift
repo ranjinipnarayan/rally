@@ -6,7 +6,7 @@ struct RallyAppShareFooter: View {
   var body: some View {
     ShareLink(item: Self.invitationURL) {
       Text("share the rally app")
-        .font(.system(size: 12, weight: .medium))
+        .font(.footnote.weight(.medium))
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

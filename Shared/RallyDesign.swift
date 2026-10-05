@@ -15,9 +15,9 @@ struct RallyActionButtonStyle: ButtonStyle {
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .font(.system(size: 14, weight: .semibold))
+      .font(.body.weight(.semibold))
       .foregroundStyle(.white)
-      .frame(maxWidth: .infinity, minHeight: 44)
+      .frame(maxWidth: .infinity, minHeight: 48)
       .background(RallyDesign.ink, in: RoundedRectangle(cornerRadius: 8))
       .opacity(isEnabled ? (configuration.isPressed ? 0.8 : 1) : 0.35)
       .scaleEffect(configuration.isPressed && !reduceMotion ? 0.98 : 1)
@@ -217,7 +217,7 @@ struct RallyFinish: View {
 struct RallyTextFieldStyle: TextFieldStyle {
   @FocusState private var focused: Bool
   func _body(configuration: TextField<Self._Label>) -> some View {
-    configuration.font(.system(size: 14)).padding(12)
+    configuration.font(.body).padding(12)
       .foregroundStyle(RallyDesign.ink)
       .background(.white, in: RoundedRectangle(cornerRadius: 6))
       .focused($focused)

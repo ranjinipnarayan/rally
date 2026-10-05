@@ -9,11 +9,11 @@ struct LocationAutocompleteField: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text(title.lowercased()).font(.subheadline.weight(.semibold))
+      Text(title.lowercased()).font(.body.weight(.semibold))
       HStack(spacing: 0) {
         TextField(("search for a place or address").lowercased(), text: $text, axis: .vertical)
           .lineLimit(1...3)
-          .font(.system(size: 14))
+          .font(.body)
           .textFieldStyle(.plain)
           .accessibilityLabel(title)
           .focused($isEditing)
@@ -49,10 +49,10 @@ struct LocationAutocompleteField: View {
           .stroke(isEditing ? RallyDesign.red : RallyDesign.border, lineWidth: 1)
       }
       if model.isLoading {
-        ProgressView("finding places…").font(.caption)
+        ProgressView("finding places…").font(.subheadline)
       }
       if let message = model.message {
-        Text((message).lowercased()).font(.caption).foregroundStyle(.secondary)
+        Text((message).lowercased()).font(.subheadline).foregroundStyle(.secondary)
       }
       if !model.suggestions.isEmpty {
         VStack(alignment: .leading, spacing: 0) {
@@ -66,7 +66,7 @@ struct LocationAutocompleteField: View {
               VStack(alignment: .leading, spacing: 3) {
                 Text((suggestion.title).lowercased()).font(.body)
                 if !suggestion.subtitle.isEmpty {
-                  Text((suggestion.subtitle).lowercased()).font(.caption).foregroundStyle(
+                  Text((suggestion.subtitle).lowercased()).font(.subheadline).foregroundStyle(
                     .secondary)
                 }
               }

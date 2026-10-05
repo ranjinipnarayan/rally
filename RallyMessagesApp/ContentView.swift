@@ -66,7 +66,7 @@ struct ContentView: View {
             RallyDesign.red)
           RallyFinish()
         }
-        Text(("how to create a rally").lowercased()).font(.system(size: 20, weight: .semibold))
+        Text(("how to create a rally").lowercased()).font(.title3.weight(.semibold))
         creationStep(
           1, title: "Open Messages",
           detail: "Choose a conversation with a friend or group.")
@@ -108,7 +108,7 @@ struct ContentView: View {
           .background(.white, in: Circle())
           .overlay(Circle().stroke(RallyDesign.red, lineWidth: 2))
         HStack {
-          Text("imessage").font(.system(size: 13)).foregroundStyle(RallyDesign.secondary)
+          Text("imessage").font(.subheadline).foregroundStyle(RallyDesign.secondary)
           Spacer()
           Image(systemName: "mic.fill").foregroundStyle(RallyDesign.secondary)
         }
@@ -121,7 +121,7 @@ struct ContentView: View {
           .foregroundStyle(RallyDesign.red)
           .frame(width: 38)
         Text("tap +, then select rally")
-          .font(.caption)
+          .font(.subheadline)
           .foregroundStyle(RallyDesign.secondary)
       }
       HStack(spacing: 12) {
@@ -147,7 +147,7 @@ struct ContentView: View {
   private var login: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        Text(("sign up or log in").lowercased()).font(.system(size: 20, weight: .semibold))
+        Text(("sign up or log in").lowercased()).font(.title3.weight(.semibold))
         Text(("use your email to create and manage your rallies.").lowercased())
         TextField(("email address").lowercased(), text: $email)
           .keyboardType(.emailAddress).textContentType(.emailAddress)
@@ -205,7 +205,7 @@ struct ContentView: View {
       Section {
         VStack(alignment: .leading, spacing: 4) {
           if let email = model.account?.email {
-            Text((email).lowercased()).font(.caption).foregroundStyle(.secondary)
+            Text((email).lowercased()).font(.subheadline).foregroundStyle(.secondary)
           }
           HStack {
             Link(
@@ -279,7 +279,7 @@ struct ContentView: View {
               }
               if let location = rally.location { Text((location).lowercased()) }
               if rally.status == "draft" {
-                Text(("finish on website").lowercased()).font(.subheadline.bold())
+                Text(("finish on website").lowercased()).font(.body.weight(.semibold))
               } else if rally.nextAction != "none" {
                 Text(RallyLabels.nextAction(rally.nextAction).lowercased()).font(
                   .subheadline.bold())
@@ -328,6 +328,7 @@ private struct RallyDetailView: View {
   @State private var pendingAction = ""
   @State private var showConfirmation = false
   @State private var calendarEvent: RallyCalendarEvent?
+  @State private var showPlanShareSheet = false
   @State private var didAddToCalendar = false
 
   var body: some View {
@@ -397,6 +398,12 @@ private struct RallyDetailView: View {
         calendarEvent = nil
       }
     }
+    .sheet(isPresented: $showPlanShareSheet) {
+      if let message = detail?.rally.localPlanSummary {
+        RallyPlanShareSheet(text: message.lowercased())
+          .ignoresSafeArea()
+      }
+    }
     .confirmationDialog(
       ("\(pendingAction.capitalized) this Rally?").lowercased(), isPresented: $showConfirmation,
       titleVisibility: .visible
@@ -423,18 +430,18 @@ private struct RallyDetailView: View {
       VStack(alignment: .leading, spacing: 20) {
         VStack(alignment: .leading, spacing: 6) {
           HStack {
-            Text("your rally").font(.system(size: 20, weight: .semibold))
+            Text("your rally").font(.title3.weight(.semibold))
             RallyFinish()
           }
           Text(
             "\(RallyLabels.status(detail.rally.status).lowercased()) · \(detail.responses.count) responses"
           )
-          .font(.caption).foregroundStyle(RallyDesign.secondary)
+          .font(.subheadline).foregroundStyle(RallyDesign.secondary)
           if detail.rally.nextAction != "none" {
             Text("next: \(RallyLabels.nextAction(detail.rally.nextAction).lowercased())")
-              .font(.caption).foregroundStyle(RallyDesign.secondary)
+              .font(.subheadline).foregroundStyle(RallyDesign.secondary)
           }
-          if let error { Text(error.lowercased()).font(.caption).foregroundStyle(.red) }
+          if let error { Text(error.lowercased()).font(.subheadline).foregroundStyle(.red) }
         }
         RallyPlanCard(drives: true) {
           VStack(alignment: .leading, spacing: 14) {
@@ -443,7 +450,7 @@ private struct RallyDetailView: View {
               planField("when", value: time.formatted(date: .abbreviated, time: .shortened))
             } else if !detail.rally.candidates.isEmpty {
               VStack(alignment: .leading, spacing: 5) {
-                Text("when (poll)").font(.caption).foregroundStyle(RallyDesign.secondary)
+                Text("when (poll)").font(.subheadline).foregroundStyle(RallyDesign.secondary)
                 ForEach(detail.rally.candidates) { candidate in
                   Text(
                     candidate.startsAt.formatted(date: .abbreviated, time: .shortened).lowercased()
@@ -510,7 +517,9 @@ private struct RallyDetailView: View {
         {
           detailPanel("plan summary") {
             Text((message).lowercased())
-            ShareLink(item: message.lowercased()) {
+            Button {
+              showPlanShareSheet = true
+            } label: {
               Label("share plan", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(RallyActionButtonStyle())
@@ -531,7 +540,7 @@ private struct RallyDetailView: View {
             Text("delete rally")
             Spacer()
           }
-          .font(.system(size: 14))
+          .font(.body)
           .foregroundStyle(RallyDesign.red)
           .padding(.horizontal, 16)
           .frame(maxWidth: .infinity, minHeight: 48)
@@ -545,7 +554,7 @@ private struct RallyDetailView: View {
       .padding(20)
     }
     .background(Color.white)
-    .font(.subheadline)
+    .font(.body)
   }
 
   private func choices(_ detail: OrganizerDetail) -> some View {
@@ -565,15 +574,15 @@ private struct RallyDetailView: View {
                 ? RallyDesign.red : RallyDesign.secondary)
             VStack(alignment: .leading, spacing: 3) {
               Text(candidate.startsAt.formatted(date: .abbreviated, time: .omitted).lowercased())
-                .font(.system(size: 14, weight: .medium))
+                .font(.body.weight(.medium))
               Text(candidate.startsAt.formatted(date: .omitted, time: .shortened).lowercased())
-                .font(.caption).foregroundStyle(RallyDesign.secondary)
+                .font(.subheadline).foregroundStyle(RallyDesign.secondary)
             }
             Spacer()
             Text(
               "\(detail.responses.filter { $0.available.contains(candidate.id) }.count) available"
             )
-            .font(.system(size: 11))
+            .font(.footnote)
             .foregroundStyle(RallyDesign.secondary)
             .padding(.horizontal, 8).padding(.vertical, 5)
             .background(RallyDesign.muted, in: Capsule())
@@ -591,7 +600,7 @@ private struct RallyDetailView: View {
           hasChosenTime && chosenTime == candidate.startsAt ? [.isSelected] : [])
       }
       VStack(alignment: .leading, spacing: 8) {
-        Text("final time").font(.subheadline.weight(.semibold))
+        Text("final time").font(.body.weight(.semibold))
         Button {
           pendingTime = chosenTime
           isChoosingTime = true
@@ -603,7 +612,7 @@ private struct RallyDetailView: View {
                 ? chosenTime.formatted(date: .abbreviated, time: .shortened).lowercased()
                 : "choose date and time"
             )
-            .font(.system(size: 14))
+            .font(.body)
             .multilineTextAlignment(.leading)
             Spacer(minLength: 8)
             Image(systemName: "pencil").foregroundStyle(RallyDesign.red)
@@ -631,7 +640,7 @@ private struct RallyDetailView: View {
         .disabled(chosenLocation.count > 200 || (hasChosenTime && chosenTime <= Date()))
       if hasChosenTime && chosenTime <= Date() {
         Text("choose a future time to confirm this plan")
-          .font(.caption).foregroundStyle(RallyDesign.secondary)
+          .font(.subheadline).foregroundStyle(RallyDesign.secondary)
       }
       Button(("confirm plan").lowercased()) { confirm("confirm") }
         .buttonStyle(RallyActionButtonStyle())
@@ -644,9 +653,9 @@ private struct RallyDetailView: View {
 
   private func planField(_ title: String, value: String, prominent: Bool = false) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(title).font(.caption).foregroundStyle(RallyDesign.secondary)
+      Text(title).font(.subheadline).foregroundStyle(RallyDesign.secondary)
       Text(value.lowercased())
-        .font(prominent ? .system(size: 20, weight: .semibold) : .subheadline)
+        .font(prominent ? .title3.weight(.semibold) : .body)
         .fixedSize(horizontal: false, vertical: true)
     }
   }
@@ -655,7 +664,7 @@ private struct RallyDetailView: View {
     -> some View
   {
     VStack(alignment: .leading, spacing: 14) {
-      Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(RallyDesign.secondary)
+      Text(title).font(.body.weight(.semibold)).foregroundStyle(RallyDesign.secondary)
       content()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
@@ -729,4 +738,15 @@ private struct RallyDetailView: View {
       needsRefresh = true
     }
   }
+}
+
+private struct RallyPlanShareSheet: UIViewControllerRepresentable {
+  let text: String
+
+  func makeUIViewController(context: Context) -> UIActivityViewController {
+    // NSString supplies plain text to native activities, including Messages.
+    UIActivityViewController(activityItems: [text as NSString], applicationActivities: nil)
+  }
+
+  func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
