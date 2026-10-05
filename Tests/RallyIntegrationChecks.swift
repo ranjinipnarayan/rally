@@ -77,6 +77,18 @@ struct RallyIntegrationChecks {
       activity: "Dinner", scheduleMode: .specific, specificDate: future,
       pollCandidates: [], locationMode: .open, location: "")
     let sessions = TestSessions()
+    precondition(plan.timeZone == .current)
+    var changedTimeZone = plan
+    changedTimeZone.timeZone = TimeZone(
+      identifier: plan.timeZone.identifier == "America/Los_Angeles"
+        ? "Asia/Kathmandu" : "America/Los_Angeles")!
+    let zoneBackend = TestBackend()
+    let zoneModel = RallySubmissionModel(sessions: sessions, backend: zoneBackend)
+    await zoneModel.submit(plan) { _ in }
+    zoneModel.planDidChange(changedTimeZone)
+    precondition(zoneModel.createdRally == nil, "Timezone changes must invalidate a saved result")
+    await zoneModel.submit(changedTimeZone) { _ in }
+    precondition(zoneBackend.calls.count == 2 && zoneBackend.calls.last == changedTimeZone)
     let backend = TestBackend()
     let model = RallySubmissionModel(sessions: sessions, backend: backend)
     model.refreshSession()

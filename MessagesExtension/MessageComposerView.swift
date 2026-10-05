@@ -16,35 +16,6 @@ private enum ComposerStep: Int {
   }
 }
 
-private enum PollDateRange: String, CaseIterable, Identifiable {
-  case thisWeek = "This week"
-  case thisWeekend = "This weekend"
-  case nextWeek = "Next week"
-
-  var id: String { rawValue }
-}
-
-private enum PollTimeRange: String, CaseIterable, Identifiable {
-  case morning = "Morning"
-  case afternoon = "Afternoon"
-  case evening = "Evening"
-
-  var id: String { rawValue }
-
-  var hour: Int {
-    switch self {
-    case .morning: 10
-    case .afternoon: 14
-    case .evening: 19
-    }
-  }
-}
-
-private struct PollCandidate: Identifiable {
-  let id = UUID()
-  var date: Date
-}
-
 struct MessageComposerView: View {
   let isExpanded: Bool
   @ObservedObject var submission: RallySubmissionModel
@@ -54,22 +25,18 @@ struct MessageComposerView: View {
 
   @State private var showSignInPrompt = false
   @State private var showOpenAppHelp = false
+  @State private var showTimeZonePicker = false
 
   @State private var step: ComposerStep = .activity
   @State private var activity = ""
   @State private var scheduleMode: ScheduleMode = .specific
-  @State private var specificDate: Date = {
-    let calendar = Calendar.current
-    let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
-    return calendar.date(bySettingHour: 19, minute: 0, second: 0, of: tomorrow) ?? tomorrow
-  }()
+  @State private var schedule = RallySchedule()
   @State private var pollDateRange: PollDateRange = .thisWeek
   @State private var pollTimeRange: PollTimeRange = .evening
-  @State private var pollCandidates: [PollCandidate] = []
   @State private var locationMode: LocationMode = .specific
   @State private var location = ""
 
-  private let activitySuggestions = ["Dinner", "Coffee", "Drinks", "Movie", "Walk", "Not sure yet"]
+  private let activitySuggestions = ["Dinner", "Drinks", "Movie", "Walk", "Not sure yet"]
 
   var body: some View {
     Group {
@@ -82,26 +49,33 @@ struct MessageComposerView: View {
     .disabled(submission.isSubmitting)
     .padding(16)
     .background(Color.white)
-    .foregroundStyle(Color.black)
-    .tint(.black)
+    .foregroundStyle(RallyDesign.ink)
+    .tint(RallyDesign.red)
     .environment(\.colorScheme, .light)
     // Set the presentation's appearance as well as SwiftUI's environment.
     // Native date-picker labels and popovers must match our white background.
     .preferredColorScheme(.light)
-    .alert("Sign in to create your Rally", isPresented: $showSignInPrompt) {
-      Button("Open Rally") {
+    .sheet(isPresented: $showTimeZonePicker) {
+      TimeZonePicker(selection: schedule.timeZone) { zone in
+        schedule.changeTimeZone(to: zone)
+      }
+    }
+    .alert(("Sign in to create your Rally").lowercased(), isPresented: $showSignInPrompt) {
+      Button(("open rally").lowercased()) {
         Task { showOpenAppHelp = !(await onSignIn()) }
       }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("Open Rally to sign in. Your entries will stay here while this extension remains open.")
-    }
-    .alert("Open Rally from your Home Screen", isPresented: $showOpenAppHelp) {
-      Button("OK", role: .cancel) {}
+      Button(("cancel").lowercased(), role: .cancel) {}
     } message: {
       Text(
-        "Messages couldn’t open Rally. Open the Rally app, sign in, then return here to create your Rally."
-      )
+        ("open rally to sign in. your entries will stay here while this extension remains open.")
+          .lowercased())
+    }
+    .alert(("Open Rally from your Home Screen").lowercased(), isPresented: $showOpenAppHelp) {
+      Button(("ok").lowercased(), role: .cancel) {}
+    } message: {
+      Text(
+        ("messages couldn’t open rally. open the rally app, sign in, then return here to create your rally.")
+          .lowercased())
     }
     .onChange(of: currentPayload) { _, plan in
       submission.planDidChange(plan)
@@ -112,12 +86,16 @@ struct MessageComposerView: View {
     GeometryReader { geometry in
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
-          Text("Rally")
-            .font(.headline)
-          Text("Drive the plan out of the groupchat")
+          HStack(spacing: 0) {
+            Text(("rally").lowercased()).font(.system(size: 20, weight: .semibold))
+            Text((".").lowercased()).font(.system(size: 20, weight: .semibold)).foregroundStyle(
+              RallyDesign.red)
+            RallyFinish().padding(.leading, 10)
+          }
+          Text(("drive the plan out of the groupchat").lowercased())
             .font(.subheadline)
           if !submission.isSignedIn {
-            Text("Open Rally to sign in when you’re ready to create your Rally.")
+            Text(("open rally to sign in when you’re ready to create your rally.").lowercased())
               .font(.caption)
           }
           PrimaryButton(title: "Create a plan", action: onExpand)
@@ -133,23 +111,33 @@ struct MessageComposerView: View {
       VStack(alignment: .leading, spacing: 20) {
         HStack {
           if step != .activity {
-            Button("Back") {
+            Button {
               moveBack()
+            } label: {
+              Image(systemName: "chevron.left")
+                .font(.system(size: 18, weight: .medium))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
             }
-            .foregroundStyle(.black)
+            .buttonStyle(.plain)
+            .foregroundStyle(RallyDesign.ink)
+            .accessibilityLabel("back")
           }
           Spacer()
-          Text("Step \(step.rawValue + 1) of 4")
+          Text(("step \(step.rawValue + 1) of 4").lowercased())
             .font(.caption)
         }
 
-        Text(step.title)
-          .font(.title2.bold())
+        RallyJourney(step: step.rawValue)
+        HStack {
+          Text(step.title.lowercased()).font(.system(size: 20, weight: .semibold))
+          if step == .review { RallyFinish() }
+        }
 
         stepContent
 
         if step != .review, let error = submission.errorMessage {
-          Text(error).font(.caption)
+          Text((error).lowercased()).font(.caption)
         }
       }
     }
@@ -171,10 +159,12 @@ struct MessageComposerView: View {
 
   private var activityStep: some View {
     VStack(alignment: .leading, spacing: 16) {
-      TextField("What do you want to do?", text: $activity)
-        .textFieldStyle(PlainBlackTextFieldStyle())
+      TextField(("what do you want to do?").lowercased(), text: $activity)
+        .textInputAutocapitalization(.never)
+        .textInputAutocapitalization(.never)
+        .textFieldStyle(RallyTextFieldStyle())
 
-      Text("Suggestions")
+      Text(("suggestions").lowercased())
         .font(.subheadline.bold())
 
       FlowLayout(spacing: 8) {
@@ -202,33 +192,60 @@ struct MessageComposerView: View {
         }
         ChoiceButton(title: "Create a poll", selected: scheduleMode == .poll) {
           scheduleMode = .poll
-          if pollCandidates.isEmpty { regenerateCandidatesIfPossible() }
+          if schedule.pollCandidates.isEmpty { regenerateCandidatesIfPossible() }
         }
       }
 
       if scheduleMode == .specific {
-        DatePicker(
-          "Date and time",
-          selection: $specificDate,
-          in: Date()...,
-          displayedComponents: [.date, .hourAndMinute]
-        )
-        .datePickerStyle(.graphical)
-        .foregroundStyle(Color.primary)
-        .tint(.black)
+        VStack(spacing: 12) {
+          DatePicker(
+            ("date").lowercased(), selection: $schedule.specificDate, in: Date()...,
+            displayedComponents: [.date]
+          )
+          Divider()
+          DatePicker(
+            ("time").lowercased(), selection: $schedule.specificDate, in: Date()...,
+            displayedComponents: [.hourAndMinute]
+          )
+        }
+        .datePickerStyle(.compact)
+        .font(.subheadline)
+        .padding(14)
+        .background(RallyDesign.muted, in: RoundedRectangle(cornerRadius: 10))
       } else {
         pollBuilder
       }
 
-      PrimaryButton(title: "Next", disabled: scheduleMode == .poll && pollCandidates.isEmpty) {
+      PrimaryButton(
+        title: "Next", disabled: scheduleMode == .poll && schedule.pollCandidates.isEmpty
+      ) {
         step = .location
       }
+
+      Button {
+        showTimeZonePicker = true
+      } label: {
+        HStack(spacing: 6) {
+          Image(systemName: "globe")
+          Text(
+            ("timezone · \(TimeZonePicker.name(for: schedule.timeZone).lowercased())").lowercased())
+          Image(systemName: "chevron.right").font(.system(size: 9))
+        }
+        .font(.caption)
+        .foregroundStyle(RallyDesign.secondary)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier("schedule-timezone")
     }
+    .environment(\.timeZone, schedule.timeZone)
+    .environment(\.calendar, schedule.calendar)
   }
 
   private var pollBuilder: some View {
     VStack(alignment: .leading, spacing: 18) {
-      Text("When — date?")
+      Text(("when — date?").lowercased())
         .font(.headline)
       FlowLayout(spacing: 8) {
         ForEach(PollDateRange.allCases) { range in
@@ -239,7 +256,7 @@ struct MessageComposerView: View {
         }
       }
 
-      Text("When — time-wise?")
+      Text(("when — time-wise?").lowercased())
         .font(.headline)
       FlowLayout(spacing: 8) {
         ForEach(PollTimeRange.allCases) { range in
@@ -250,30 +267,32 @@ struct MessageComposerView: View {
         }
       }
 
-      if !pollCandidates.isEmpty {
-        Text("Edit the candidates")
+      if !schedule.pollCandidates.isEmpty {
+        Text(("edit the candidates").lowercased())
           .font(.headline)
-        ForEach($pollCandidates) { $candidate in
+        ForEach($schedule.pollCandidates) { $candidate in
           HStack {
             DatePicker(
-              "Option \((pollCandidates.firstIndex { $0.id == candidate.id } ?? 0) + 1)",
+              ("Option \((schedule.pollCandidates.firstIndex { $0.id == candidate.id } ?? 0) + 1)")
+                .lowercased(),
               selection: $candidate.date,
               in: Date()...,
               displayedComponents: [.date, .hourAndMinute]
             )
             .foregroundStyle(Color.primary)
-            .tint(.black)
+            .tint(RallyDesign.red)
             Button {
-              pollCandidates.removeAll { $0.id == candidate.id }
+              schedule.pollCandidates.removeAll { $0.id == candidate.id }
             } label: {
               Image(systemName: "xmark")
             }
             .accessibilityLabel(
-              "Remove option \((pollCandidates.firstIndex { $0.id == candidate.id } ?? 0) + 1)")
+              "Remove option \((schedule.pollCandidates.firstIndex { $0.id == candidate.id } ?? 0) + 1)"
+            )
           }
         }
       }
-      Button("Regenerate 3 options") {
+      Button(("regenerate 3 options").lowercased()) {
         regenerateCandidatesIfPossible()
       }
     }
@@ -291,7 +310,7 @@ struct MessageComposerView: View {
       }
 
       if locationMode == .specific {
-        LocationAutocompleteField(title: "Location", text: $location, cornerRadius: 0)
+        LocationAutocompleteField(title: "Location", text: $location, cornerRadius: 6)
       }
 
       PrimaryButton(title: "Review") {
@@ -302,26 +321,30 @@ struct MessageComposerView: View {
 
   private var reviewStep: some View {
     VStack(alignment: .leading, spacing: 18) {
-      ReviewRow(label: "Plan", value: resolvedActivity)
-      ReviewRow(label: "When", value: scheduleSummary)
-      ReviewRow(
-        label: "Where", value: locationMode == .specific ? resolvedLocation : "Choose later")
-      ReviewRow(label: "Response", value: routeSummary)
+      RallyPlanCard {
+        VStack(alignment: .leading, spacing: 14) {
+          ReviewRow(label: "Plan", value: resolvedActivity)
+          ReviewRow(label: scheduleMode == .poll ? "when (poll)" : "when", value: scheduleSummary)
+          ReviewRow(
+            label: "Where", value: locationMode == .specific ? resolvedLocation : "Choose later")
 
-      Divider().overlay(Color.black)
+        }
+      }.padding(.vertical, 10)
+
+      Divider().overlay(RallyDesign.border)
 
       if let error = submission.errorMessage {
-        Text(error).font(.caption)
+        Text((error).lowercased()).font(.caption)
       }
       if submission.requiresCreationReview {
         Link(
-          "Review My Rallies",
+          ("review my rallies").lowercased(),
           destination: URL(string: "https://rally-your-friends.com/my-rallies")!
         )
         .font(.headline)
       }
       if submission.createdRally != nil {
-        Text("Rally saved. Add its link to your conversation.").font(.caption)
+        Text(("rally saved. add its link to your conversation.").lowercased()).font(.caption)
       }
       PrimaryButton(
         title: submission.isSubmitting
@@ -354,10 +377,11 @@ struct MessageComposerView: View {
     PlanPayload(
       activity: resolvedActivity,
       scheduleMode: scheduleMode,
-      specificDate: scheduleMode == .specific ? specificDate : nil,
-      pollCandidates: scheduleMode == .poll ? pollCandidates.map(\.date) : [],
+      specificDate: scheduleMode == .specific ? schedule.specificDate : nil,
+      pollCandidates: scheduleMode == .poll ? schedule.pollCandidates.map(\.date) : [],
       locationMode: locationMode,
-      location: locationMode == .specific ? resolvedLocation : ""
+      location: locationMode == .specific ? resolvedLocation : "",
+      timeZone: schedule.timeZone
     )
   }
 
@@ -367,24 +391,16 @@ struct MessageComposerView: View {
 
   private func scheduleSummary(for plan: PlanPayload) -> String {
     if let date = plan.specificDate {
-      return date.formatted(date: .abbreviated, time: .shortened)
+      return reviewDate(date)
     }
     return plan.pollCandidates
-      .map { $0.formatted(date: .abbreviated, time: .shortened) }
+      .map { reviewDate($0) }
       .joined(separator: "\n")
   }
 
-  private var routeSummary: String {
-    switch (scheduleMode, locationMode) {
-    case (.specific, .specific):
-      "Yes / No / Please choose another day"
-    case (.specific, .open):
-      "Consensus, then location suggestions"
-    case (.poll, .specific):
-      "Time poll with the fixed location"
-    case (.poll, .open):
-      "Time poll, then location suggestions"
-    }
+  private func reviewDate(_ date: Date) -> String {
+    let zone = schedule.timeZone.abbreviation(for: date) ?? schedule.timeZone.identifier
+    return "\(schedule.formatted(date)) \(zone)"
   }
 
   private func moveBack() {
@@ -393,45 +409,7 @@ struct MessageComposerView: View {
   }
 
   private func regenerateCandidatesIfPossible() {
-    pollCandidates = Self.generateCandidates(dateRange: pollDateRange, timeRange: pollTimeRange)
-      .map { PollCandidate(date: $0) }
-  }
-
-  private static func generateCandidates(dateRange: PollDateRange, timeRange: PollTimeRange)
-    -> [Date]
-  {
-    let calendar = Calendar.current
-    let now = Date()
-    let startOfToday = calendar.startOfDay(for: now)
-    let candidateDays: [Date]
-
-    switch dateRange {
-    case .thisWeek:
-      candidateDays = (1...3).compactMap {
-        calendar.date(byAdding: .day, value: $0, to: startOfToday)
-      }
-    case .thisWeekend:
-      let weekday = calendar.component(.weekday, from: now)
-      let daysUntilFriday = (6 - weekday + 7) % 7
-      let offset = daysUntilFriday == 0 ? 7 : daysUntilFriday
-      candidateDays = (offset...(offset + 2)).compactMap {
-        calendar.date(byAdding: .day, value: $0, to: startOfToday)
-      }
-    case .nextWeek:
-      let nextMonday =
-        calendar.nextDate(
-          after: startOfToday,
-          matching: DateComponents(weekday: 2),
-          matchingPolicy: .nextTime
-        ) ?? startOfToday
-      candidateDays = [0, 2, 4].compactMap {
-        calendar.date(byAdding: .day, value: $0, to: nextMonday)
-      }
-    }
-
-    return candidateDays.compactMap { day in
-      calendar.date(bySettingHour: timeRange.hour, minute: 0, second: 0, of: day)
-    }
+    schedule.regenerateCandidates(dateRange: pollDateRange, timeRange: pollTimeRange)
   }
 }
 
@@ -442,14 +420,9 @@ private struct PrimaryButton: View {
 
   var body: some View {
     Button(action: action) {
-      Text(title)
-        .font(.headline)
-        .foregroundStyle(.white)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(disabled ? Color.black.opacity(0.35) : Color.black)
+      Text(title.lowercased())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(RallyActionButtonStyle())
     .disabled(disabled)
   }
 }
@@ -461,14 +434,15 @@ private struct ChoiceButton: View {
 
   var body: some View {
     Button(action: action) {
-      Text(title)
-        .font(.subheadline)
-        .foregroundStyle(selected ? Color.white : Color.black)
+      Text(title.lowercased())
+        .font(.system(size: 12))
+        .foregroundStyle(selected ? Color.white : RallyDesign.ink)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(selected ? Color.black : Color.white)
-        .overlay(Rectangle().stroke(Color.black, lineWidth: 1))
+        .background(selected ? RallyDesign.ink : Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(RallyDesign.border, lineWidth: 1))
     }
     .buttonStyle(.plain)
   }
@@ -480,21 +454,12 @@ private struct ReviewRow: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text(label)
+      Text(label.lowercased())
         .font(.caption.bold())
-      Text(value)
+      Text(value.lowercased())
         .font(.body)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-  }
-}
-
-private struct PlainBlackTextFieldStyle: TextFieldStyle {
-  func _body(configuration: TextField<Self._Label>) -> some View {
-    configuration
-      .padding(12)
-      .foregroundStyle(Color.black)
-      .overlay(Rectangle().stroke(Color.black, lineWidth: 1))
   }
 }
 

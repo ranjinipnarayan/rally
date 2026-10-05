@@ -5,15 +5,16 @@ struct RallyAppShareFooter: View {
 
   var body: some View {
     ShareLink(item: Self.invitationURL) {
-      Text("Share the Rally app")
-        .font(.footnote)
-        .frame(maxWidth: .infinity, minHeight: 44)
+      Text("share the rally app")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black, in: RoundedRectangle(cornerRadius: 8))
+        .frame(minHeight: 44)
         .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
-    .foregroundStyle(Color.black)
-    .padding(.horizontal, 16)
-    .padding(.vertical, 8)
-    .background(Color.white)
+    .frame(maxWidth: .infinity)
   }
 }

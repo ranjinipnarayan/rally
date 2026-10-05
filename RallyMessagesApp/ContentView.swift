@@ -14,21 +14,24 @@ struct ContentView: View {
     NavigationStack {
       Group {
         if model.loading {
-          ProgressView("Loading Rally…")
+          ProgressView("loading rally…")
         } else if model.account == nil {
           welcome
+            .toolbar(.hidden, for: .navigationBar)
         } else {
           dashboard
         }
       }
-      .navigationTitle("Rally")
+      .navigationTitle(("rally").lowercased())
       .navigationDestination(isPresented: $isShowingLogin) {
         login
           .navigationBarTitleDisplayMode(.inline)
+          .toolbar(.visible, for: .navigationBar)
       }
     }
     .id(model.account?.id)
-    .tint(.black)
+    .tint(RallyDesign.red)
+    .foregroundStyle(RallyDesign.ink)
     .preferredColorScheme(.light)
     .onChange(of: model.isEnteringCode) { _, _ in code = "" }
     .onChange(of: model.signInEmail) { _, sentEmail in
@@ -57,18 +60,25 @@ struct ContentView: View {
   private var welcome: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 28) {
-        Image(systemName: "bubble.left.and.bubble.right").font(.system(size: 48))
-        Text("How to create a Rally").font(.largeTitle.bold())
+        HStack {
+          Text(("rally").lowercased()).font(.system(size: 28, weight: .semibold))
+          Text((".").lowercased()).font(.system(size: 28, weight: .semibold)).foregroundStyle(
+            RallyDesign.red)
+          RallyFinish()
+        }
+        Text(("how to create a rally").lowercased()).font(.system(size: 20, weight: .semibold))
         creationStep(
           1, title: "Open Messages",
           detail: "Choose a conversation with a friend or group.")
         creationStep(
           2, title: "Tap + and choose Rally",
           detail: "Find Rally in the apps for your conversation.")
+        messagesAppGuide
+          .padding(.leading, 36)
         creationStep(
           3, title: "Make your plan",
           detail: "Choose what, when, and where. Then send your Rally to the conversation.")
-        Button("See your rallies") { isShowingLogin = true }
+        Button(("see your rallies").lowercased()) { isShowingLogin = true }
           .buttonStyle(RallyActionButtonStyle())
         RallyAppShareFooter()
       }
@@ -78,37 +88,80 @@ struct ContentView: View {
 
   private func creationStep(_ number: Int, title: String, detail: String) -> some View {
     HStack(alignment: .top, spacing: 12) {
-      Text("\(number).")
+      Text(("\(number).").lowercased())
         .font(.headline)
         .frame(width: 24, alignment: .leading)
       VStack(alignment: .leading, spacing: 6) {
-        Text(title).font(.headline)
-        Text(detail).foregroundStyle(.secondary)
+        Text(title.lowercased()).font(.headline)
+        Text(detail.lowercased()).foregroundStyle(.secondary)
       }
     }
     .accessibilityElement(children: .combine)
   }
 
+  private var messagesAppGuide: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(spacing: 10) {
+        Image(systemName: "plus")
+          .font(.system(size: 20, weight: .medium))
+          .frame(width: 38, height: 38)
+          .background(.white, in: Circle())
+          .overlay(Circle().stroke(RallyDesign.red, lineWidth: 2))
+        HStack {
+          Text("imessage").font(.system(size: 13)).foregroundStyle(RallyDesign.secondary)
+          Spacer()
+          Image(systemName: "mic.fill").foregroundStyle(RallyDesign.secondary)
+        }
+        .padding(10)
+        .overlay(Capsule().stroke(RallyDesign.border, lineWidth: 1))
+      }
+      HStack(spacing: 10) {
+        Image(systemName: "arrow.down")
+          .font(.system(size: 16, weight: .medium))
+          .foregroundStyle(RallyDesign.red)
+          .frame(width: 38)
+        Text("tap +, then select rally")
+          .font(.caption)
+          .foregroundStyle(RallyDesign.secondary)
+      }
+      HStack(spacing: 12) {
+        Image("RallyGuideIcon")
+          .resizable().scaledToFit().frame(width: 38, height: 38)
+          .clipShape(RoundedRectangle(cornerRadius: 9))
+        Text("rally").font(.system(size: 16, weight: .semibold))
+        Spacer()
+        Image(systemName: "hand.tap").foregroundStyle(RallyDesign.red)
+      }
+      .padding(10)
+      .background(.white, in: RoundedRectangle(cornerRadius: 12))
+      .overlay(RoundedRectangle(cornerRadius: 12).stroke(RallyDesign.red, lineWidth: 1))
+    }
+    .padding(14)
+    .background(RallyDesign.muted, in: RoundedRectangle(cornerRadius: 14))
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(
+      "in your messages conversation, tap the plus button beside the message field, then select rally in the apps menu"
+    )
+  }
+
   private var login: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
-        Text("Sign up or log in").font(.largeTitle.bold())
-        Text("Use your email to create and manage your Rallies.")
-        TextField("Email address", text: $email)
+        Text(("sign up or log in").lowercased()).font(.system(size: 20, weight: .semibold))
+        Text(("use your email to create and manage your rallies.").lowercased())
+        TextField(("email address").lowercased(), text: $email)
           .keyboardType(.emailAddress).textContentType(.emailAddress)
           .textInputAutocapitalization(.never).autocorrectionDisabled()
-          .textFieldStyle(.roundedBorder)
+          .textFieldStyle(RallyTextFieldStyle())
           .accessibilityLabel("Email address")
           .disabled(model.busy || model.signInEmail != nil)
         if model.isEnteringCode {
-          if let notice = model.notice { Text(notice) }
-          Text(
-            "Enter the code from your sign-in email here. You can read the email on another device, or open its link on this device."
-          )
-          TextField("Email code", text: $code)
+          if let notice = model.notice { Text((notice).lowercased()) }
+          Text("enter your code")
+          TextField(("email code").lowercased(), text: $code)
             .keyboardType(.numberPad).textContentType(.oneTimeCode)
             .textInputAutocapitalization(.never).autocorrectionDisabled()
-            .textFieldStyle(.roundedBorder)
+            .textFieldStyle(RallyTextFieldStyle())
             .accessibilityLabel("Email code")
             .disabled(model.busy)
             .onChange(of: code) { _, value in
@@ -121,7 +174,7 @@ struct ContentView: View {
           .disabled(
             model.busy || !RallyAuthConfiguration.isValidEmail(email)
               || !RallyAuthConfiguration.isValidCode(code))
-          Button("Change email or request a new code") { model.resetSignIn() }
+          Button(("change email or request a new code").lowercased()) { model.resetSignIn() }
             .font(.footnote)
             .disabled(model.busy)
         } else {
@@ -130,11 +183,11 @@ struct ContentView: View {
           }
           .buttonStyle(RallyActionButtonStyle())
           .disabled(model.busy || !RallyAuthConfiguration.isValidEmail(email))
-          Button("I already have a code") { model.showCodeEntry() }
+          Button(("i already have a code").lowercased()) { model.showCodeEntry() }
             .font(.footnote)
             .disabled(model.busy)
         }
-        if let error = model.errorMessage { Text(error).foregroundStyle(.red) }
+        if let error = model.errorMessage { Text((error).lowercased()).foregroundStyle(.red) }
         RallyAppShareFooter()
       }.padding(24)
     }
@@ -142,26 +195,26 @@ struct ContentView: View {
 
   private var dashboard: some View {
     List {
-      if let error = model.errorMessage { Text(error).foregroundStyle(.red) }
-      rallySection("Needs You", key: "needs_you")
-      rallySection("Active", key: "active")
-      rallySection("Past", key: "past")
+      if let error = model.errorMessage { Text((error).lowercased()).foregroundStyle(.red) }
+      rallySection("needs you", key: "needs_you")
+      rallySection("active", key: "active")
+      rallySection("past", key: "past")
       Section {
         RallyAppShareFooter()
       }
       Section {
         VStack(alignment: .leading, spacing: 4) {
           if let email = model.account?.email {
-            Text(email).font(.caption).foregroundStyle(.secondary)
+            Text((email).lowercased()).font(.caption).foregroundStyle(.secondary)
           }
           HStack {
             Link(
-              "Rally website",
+              ("rally website").lowercased(),
               destination: URL(string: "https://rally-your-friends.com/my-rallies")!
             )
             .frame(minHeight: 44)
             Spacer()
-            Button("Sign out") { Task { await model.signOut() } }
+            Button(("sign out").lowercased()) { Task { await model.signOut() } }
               .frame(minHeight: 44)
               .disabled(model.busy)
           }
@@ -170,58 +223,72 @@ struct ContentView: View {
         }
       }
     }
+    .scrollContentBackground(.hidden)
+    .background(Color.white)
+    .listStyle(.insetGrouped)
     .refreshable { await model.refresh() }
     .confirmationDialog(
-      "Delete this Rally?", isPresented: $showDeleteConfirmation,
+      ("Delete this Rally?").lowercased(), isPresented: $showDeleteConfirmation,
       titleVisibility: .visible, presenting: rallyToDelete
     ) { rally in
-      Button("Delete Rally", role: .destructive) {
+      Button(("delete rally").lowercased(), role: .destructive) {
         Task { await deleteRally(rally) }
       }
       .disabled(model.busy)
-      Button("Cancel", role: .cancel) { rallyToDelete = nil }
+      Button(("cancel").lowercased(), role: .cancel) { rallyToDelete = nil }
     } message: { rally in
       Text(
-        "This permanently deletes “\(rally.activity.isEmpty ? "Untitled draft" : rally.activity)” and all its responses. This can’t be undone."
-      )
+        ("This permanently deletes “\(rally.activity.isEmpty ? "Untitled draft" : rally.activity)” and all its responses. This can’t be undone.")
+          .lowercased())
     }
-    .alert("Couldn’t delete Rally", isPresented: $showDeleteError) {
-      Button("OK", role: .cancel) {}
+    .alert(("Couldn’t delete Rally").lowercased(), isPresented: $showDeleteError) {
+      Button(("ok").lowercased(), role: .cancel) {}
     } message: {
-      Text(deleteError)
+      Text((deleteError).lowercased())
     }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
-        Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.refresh() } }
-          .labelStyle(.iconOnly)
-          .disabled(model.busy)
+        Button(("refresh").lowercased(), systemImage: "arrow.clockwise") {
+          Task { await model.refresh() }
+        }
+        .labelStyle(.iconOnly)
+        .disabled(model.busy)
       }
     }
   }
 
   private func rallySection(_ title: String, key: String) -> some View {
-    Section(title) {
+    Section(title.lowercased()) {
       let items = model.rallies.filter { $0.section == key }
-      if items.isEmpty { Text("No Rallies here yet").foregroundStyle(.secondary) }
+      if items.isEmpty { Text(("no rallies here yet").lowercased()).foregroundStyle(.secondary) }
       ForEach(items) { rally in
         NavigationLink {
           RallyDetailView(model: model, rallyID: rally.id)
         } label: {
-          VStack(alignment: .leading, spacing: 6) {
-            Text(rally.activity.isEmpty ? "Untitled draft" : rally.activity).font(.headline)
-            Text("\(RallyLabels.status(rally.status)) · \(rally.responseCount) responses").font(
-              .subheadline)
-            if let time = rally.time { Text(time.formatted(date: .abbreviated, time: .shortened)) }
-            if let location = rally.location { Text(location) }
-            if rally.status == "draft" {
-              Text("Finish on website").font(.subheadline.bold())
-            } else if rally.nextAction != "none" {
-              Text(RallyLabels.nextAction(rally.nextAction)).font(.subheadline.bold())
+          RallyPlanCard {
+            VStack(alignment: .leading, spacing: 6) {
+              Text((rally.activity.isEmpty ? "untitled draft" : rally.activity).lowercased()).font(
+                .headline)
+              Text(
+                ("\(RallyLabels.status(rally.status).lowercased()) · \(rally.responseCount) responses")
+                  .lowercased()
+              ).font(
+                .subheadline)
+              if let time = rally.time {
+                Text((time.formatted(date: .abbreviated, time: .shortened)).lowercased())
+              }
+              if let location = rally.location { Text((location).lowercased()) }
+              if rally.status == "draft" {
+                Text(("finish on website").lowercased()).font(.subheadline.bold())
+              } else if rally.nextAction != "none" {
+                Text(RallyLabels.nextAction(rally.nextAction).lowercased()).font(
+                  .subheadline.bold())
+              }
             }
-          }.padding(.vertical, 4)
+          }.padding(.vertical, 10)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-          Button("Delete", systemImage: "trash") {
+          Button(("delete").lowercased(), systemImage: "trash") {
             rallyToDelete = rally
             showDeleteConfirmation = true
           }
@@ -269,27 +336,27 @@ private struct RallyDetailView: View {
         form(detail)
       } else if let error {
         VStack(spacing: 20) {
-          Text(error)
-          Button("Try again") { Task { await reload() } }
+          Text((error).lowercased())
+          Button(("try again").lowercased()) { Task { await reload() } }
         }.padding()
       } else {
-        ProgressView("Loading Rally…")
+        ProgressView("loading rally…")
       }
     }
     .navigationTitle(
-      detail?.rally.activity.isEmpty == false ? detail!.rally.activity : "Your Rally"
+      (detail?.rally.activity.isEmpty == false ? detail!.rally.activity : "Your Rally").lowercased()
     )
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItemGroup(placement: .topBarTrailing) {
-        Button("Refresh", systemImage: "arrow.clockwise") {
+        Button(("refresh").lowercased(), systemImage: "arrow.clockwise") {
           Task { await reload(preserveChoices: detail != nil && !needsRefresh) }
         }
         .labelStyle(.iconOnly)
         .disabled(busy || model.busy)
         if let detail, detail.rally.publishedAt != nil {
           ShareLink(item: detail.rally.publicUrl) {
-            Label("Share plan", systemImage: "square.and.arrow.up")
+            Label(("Share plan").lowercased(), systemImage: "square.and.arrow.up")
           }
           .labelStyle(.iconOnly)
           .disabled(busy || model.busy)
@@ -302,18 +369,18 @@ private struct RallyDetailView: View {
     }
     .sheet(isPresented: $isChoosingTime) {
       NavigationStack {
-        DatePicker("Final time", selection: $pendingTime)
+        DatePicker(("Final time").lowercased(), selection: $pendingTime)
           .datePickerStyle(.wheel)
           .labelsHidden()
           .padding()
-          .navigationTitle("Final time")
+          .navigationTitle(("final time").lowercased())
           .navigationBarTitleDisplayMode(.inline)
           .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-              Button("Cancel") { isChoosingTime = false }
+              Button(("cancel").lowercased()) { isChoosingTime = false }
             }
             ToolbarItem(placement: .confirmationAction) {
-              Button("Done") {
+              Button(("done").lowercased()) {
                 chosenTime = pendingTime
                 hasChosenTime = true
                 isChoosingTime = false
@@ -331,12 +398,12 @@ private struct RallyDetailView: View {
       }
     }
     .confirmationDialog(
-      "\(pendingAction.capitalized) this Rally?", isPresented: $showConfirmation,
+      ("\(pendingAction.capitalized) this Rally?").lowercased(), isPresented: $showConfirmation,
       titleVisibility: .visible
     ) {
       Button(
         pendingAction == "confirm" ? "Confirm plan" : "\(pendingAction.capitalized) Rally",
-        role: ["cancel", "delete"].contains(pendingAction) ? .destructive : nil
+        role: pendingAction == "delete" ? .destructive : nil
       ) {
         Task {
           if pendingAction == "delete" {
@@ -347,125 +414,209 @@ private struct RallyDetailView: View {
         }
       }
     } message: {
-      Text(confirmationMessage)
+      Text((confirmationMessage).lowercased())
     }
   }
 
   private func form(_ detail: OrganizerDetail) -> some View {
-    Form {
-      Section {
-        Text(RallyLabels.status(detail.rally.status)).font(.headline)
-        Text("\(detail.responses.count) responses")
-        if detail.rally.nextAction != "none" {
-          Text(RallyLabels.nextAction(detail.rally.nextAction))
-        }
-        if let error { Text(error).foregroundStyle(.red) }
-      }
-      if detail.rally.status == "open" {
-        choices(detail)
-      } else {
-        Section("Plan") {
-          if let time = detail.rally.finalTime ?? detail.rally.startsAt {
-            Text(time.formatted(date: .complete, time: .shortened))
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 6) {
+          HStack {
+            Text("your rally").font(.system(size: 20, weight: .semibold))
+            RallyFinish()
           }
-          LabeledContent("Location", value: detail.rally.resolvedLocation ?? "To be decided")
-          if let event = RallyCalendarEvent(plan: detail.rally) {
-            Button {
-              didAddToCalendar = false
-              calendarEvent = event
-            } label: {
-              Label("Add to Calendar", systemImage: "calendar.badge.plus")
+          Text(
+            "\(RallyLabels.status(detail.rally.status).lowercased()) · \(detail.responses.count) responses"
+          )
+          .font(.caption).foregroundStyle(RallyDesign.secondary)
+          if detail.rally.nextAction != "none" {
+            Text("next: \(RallyLabels.nextAction(detail.rally.nextAction).lowercased())")
+              .font(.caption).foregroundStyle(RallyDesign.secondary)
+          }
+          if let error { Text(error.lowercased()).font(.caption).foregroundStyle(.red) }
+        }
+        RallyPlanCard(drives: true) {
+          VStack(alignment: .leading, spacing: 14) {
+            planField("plan", value: detail.rally.activity, prominent: true)
+            if let time = detail.rally.finalTime ?? detail.rally.startsAt {
+              planField("when", value: time.formatted(date: .abbreviated, time: .shortened))
+            } else if !detail.rally.candidates.isEmpty {
+              VStack(alignment: .leading, spacing: 5) {
+                Text("when (poll)").font(.caption).foregroundStyle(RallyDesign.secondary)
+                ForEach(detail.rally.candidates) { candidate in
+                  Text(
+                    candidate.startsAt.formatted(date: .abbreviated, time: .shortened).lowercased()
+                  )
+                  .font(.subheadline)
+                }
+              }
+            } else {
+              planField("when", value: "to be decided")
+            }
+            planField("where", value: detail.rally.resolvedLocation ?? "to be decided")
+          }
+        }
+        if detail.rally.status == "open" {
+          choices(detail)
+        } else {
+          detailPanel("save this plan") {
+            if let time = detail.rally.finalTime ?? detail.rally.startsAt {
+              Text((time.formatted(date: .complete, time: .shortened)).lowercased())
+            }
+            LabeledContent(
+              ("Location").lowercased(), value: detail.rally.resolvedLocation ?? "To be decided")
+            if let event = RallyCalendarEvent(plan: detail.rally) {
+              Button {
+                didAddToCalendar = false
+                calendarEvent = event
+              } label: {
+                Label(("Add to Calendar").lowercased(), systemImage: "calendar.badge.plus")
+              }
+              .buttonStyle(RallyActionButtonStyle())
+              .disabled(busy || model.busy || needsRefresh)
+              if didAddToCalendar {
+                Label(("Added to Calendar").lowercased(), systemImage: "checkmark.circle")
+                  .font(.footnote)
+              }
+            }
+            if detail.rally.status == "draft" {
+              Text(("this draft is private. open the website to finish it.").lowercased())
+              Link(
+                ("open my rallies").lowercased(),
+                destination: URL(string: "https://rally-your-friends.com/my-rallies")!)
+            }
+          }
+        }
+        detailPanel("responses (\(detail.responses.count))") {
+          if detail.responses.isEmpty {
+            Text(("no responses yet").lowercased()).foregroundStyle(.secondary)
+          }
+          ForEach(detail.responses) { response in
+            VStack(alignment: .leading, spacing: 6) {
+              Text((response.name).lowercased()).font(.headline)
+              Text((RallyLabels.response(response.consensus)).lowercased())
+              if let note = response.note, !note.isEmpty { Text((note).lowercased()) }
+              ForEach(response.suggestions, id: \.self) { Text(($0).lowercased()) }
+              ForEach(response.timeSuggestions, id: \.self) { time in
+                Text((time.formatted(date: .abbreviated, time: .shortened)).lowercased())
+              }
+            }
+          }
+        }
+        if detail.rally.publishedAt != nil,
+          ["confirmed", "completed"].contains(detail.rally.status),
+          let message = detail.rally.localPlanSummary
+        {
+          detailPanel("plan summary") {
+            Text((message).lowercased())
+            ShareLink(item: message.lowercased()) {
+              Label("share plan", systemImage: "square.and.arrow.up")
             }
             .buttonStyle(RallyActionButtonStyle())
-            .disabled(busy || model.busy || needsRefresh)
-            if didAddToCalendar {
-              Label("Added to Calendar", systemImage: "checkmark.circle")
-                .font(.footnote)
-            }
-          }
-          if detail.rally.status == "draft" {
-            Text(
-              "This draft is private. Open the website to finish it."
-            )
-            Link(
-              "Open My Rallies",
-              destination: URL(string: "https://rally-your-friends.com/my-rallies")!)
-          }
-        }
-      }
-      Section("Responses") {
-        if detail.responses.isEmpty { Text("No responses yet").foregroundStyle(.secondary) }
-        ForEach(detail.responses) { response in
-          VStack(alignment: .leading, spacing: 6) {
-            Text(response.name).font(.headline)
-            Text(RallyLabels.response(response.consensus))
-            if let note = response.note, !note.isEmpty { Text(note) }
-            ForEach(response.suggestions, id: \.self) { Text($0) }
-            ForEach(response.timeSuggestions, id: \.self) { time in
-              Text(time.formatted(date: .abbreviated, time: .shortened))
+            .accessibilityHint("share this summary through messages or another app")
+            if detail.rally.resolvedLocation != nil,
+              let maps = detail.rally.mapsUrl, maps.scheme == "https",
+              maps.host == "www.google.com"
+            {
+              Link(("open in maps").lowercased(), destination: maps)
             }
           }
         }
-      }
-      if detail.rally.publishedAt != nil,
-        ["confirmed", "completed"].contains(detail.rally.status),
-        let message = detail.rally.finalMessage
-      {
-        Section("Plan summary") {
-          Text(message)
-          if detail.rally.resolvedLocation != nil,
-            let maps = detail.rally.mapsUrl, maps.scheme == "https",
-            maps.host == "www.google.com"
-          {
-            Link("Open in Maps", destination: maps)
-          }
-        }
-      }
-      Section {
-        if ["draft", "open", "confirmed"].contains(detail.rally.status) {
-          Button("Cancel Rally", role: .destructive) { confirm("cancel") }
-            .buttonStyle(RallyActionButtonStyle())
-        }
-        Button("Delete Rally", role: .destructive) {
+        Button(role: .destructive) {
           confirm("delete")
+        } label: {
+          HStack(spacing: 10) {
+            Image(systemName: "trash")
+            Text("delete rally")
+            Spacer()
+          }
+          .font(.system(size: 14))
+          .foregroundStyle(RallyDesign.red)
+          .padding(.horizontal, 16)
+          .frame(maxWidth: .infinity, minHeight: 48)
+          .background(RallyDesign.muted, in: RoundedRectangle(cornerRadius: 10))
+          .contentShape(RoundedRectangle(cornerRadius: 10))
         }
-        .buttonStyle(RallyActionButtonStyle())
-      }.disabled(busy || model.busy || needsRefresh)
-      Section {
+        .buttonStyle(.plain)
+        .disabled(busy || model.busy || needsRefresh)
         RallyAppShareFooter()
       }
+      .padding(20)
     }
+    .background(Color.white)
+    .font(.subheadline)
   }
 
   private func choices(_ detail: OrganizerDetail) -> some View {
-    Section("Choose the final plan") {
+    detailPanel("choose the final plan") {
       ForEach(detail.rally.candidates) { candidate in
         Button {
           chosenTime = candidate.startsAt
           hasChosenTime = true
         } label: {
-          VStack(alignment: .leading) {
-            Text(candidate.startsAt.formatted(date: .abbreviated, time: .shortened))
+          HStack(spacing: 10) {
+            Image(
+              systemName: hasChosenTime && chosenTime == candidate.startsAt
+                ? "checkmark.circle.fill" : "circle"
+            )
+            .foregroundStyle(
+              hasChosenTime && chosenTime == candidate.startsAt
+                ? RallyDesign.red : RallyDesign.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(candidate.startsAt.formatted(date: .abbreviated, time: .omitted).lowercased())
+                .font(.system(size: 14, weight: .medium))
+              Text(candidate.startsAt.formatted(date: .omitted, time: .shortened).lowercased())
+                .font(.caption).foregroundStyle(RallyDesign.secondary)
+            }
+            Spacer()
             Text(
               "\(detail.responses.filter { $0.available.contains(candidate.id) }.count) available"
-            ).font(.caption)
+            )
+            .font(.system(size: 11))
+            .foregroundStyle(RallyDesign.secondary)
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RallyDesign.muted, in: Capsule())
           }
+          .foregroundStyle(RallyDesign.ink)
+          .padding(10)
+          .background(.white, in: RoundedRectangle(cornerRadius: 8))
+          .overlay(
+            RoundedRectangle(cornerRadius: 8).stroke(
+              hasChosenTime && chosenTime == candidate.startsAt
+                ? RallyDesign.red : RallyDesign.border, lineWidth: 1))
         }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(
+          hasChosenTime && chosenTime == candidate.startsAt ? [.isSelected] : [])
       }
-      LabeledContent("Final time") {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("final time").font(.subheadline.weight(.semibold))
         Button {
           pendingTime = chosenTime
           isChoosingTime = true
         } label: {
-          Text(
-            hasChosenTime
-              ? chosenTime.formatted(date: .abbreviated, time: .shortened)
-              : "Select date and time")
+          HStack(spacing: 10) {
+            Image(systemName: "calendar").foregroundStyle(RallyDesign.secondary)
+            Text(
+              hasChosenTime
+                ? chosenTime.formatted(date: .abbreviated, time: .shortened).lowercased()
+                : "choose date and time"
+            )
+            .font(.system(size: 14))
+            .multilineTextAlignment(.leading)
+            Spacer(minLength: 8)
+            Image(systemName: "pencil").foregroundStyle(RallyDesign.red)
+          }
+          .foregroundStyle(RallyDesign.ink)
+          .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+          .padding(12)
+          .background(.white, in: RoundedRectangle(cornerRadius: 6))
+          .overlay(RoundedRectangle(cornerRadius: 6).stroke(RallyDesign.border, lineWidth: 1))
         }
-        .accessibilityLabel("Final time")
-        .accessibilityValue(
-          hasChosenTime
-            ? chosenTime.formatted(date: .abbreviated, time: .shortened) : "Not selected")
+        .buttonStyle(.plain)
+        .accessibilityLabel("change final time")
+        .accessibilityValue(hasChosenTime ? chosenTime.formatted() : "not selected")
       }
       LocationAutocompleteField(title: "Final location", text: $chosenLocation)
       ForEach(
@@ -473,12 +624,16 @@ private struct RallyDetailView: View {
           .sorted(), id: \.self
       ) {
         suggestion in
-        Button(suggestion) { chosenLocation = suggestion }
+        Button((suggestion).lowercased()) { chosenLocation = suggestion }
       }
-      Button("Save choices") { Task { await mutate("save") } }
+      Button("save choices") { Task { await mutate("save") } }
         .buttonStyle(RallyActionButtonStyle())
         .disabled(chosenLocation.count > 200 || (hasChosenTime && chosenTime <= Date()))
-      Button("Confirm plan") { confirm("confirm") }
+      if hasChosenTime && chosenTime <= Date() {
+        Text("choose a future time to confirm this plan")
+          .font(.caption).foregroundStyle(RallyDesign.secondary)
+      }
+      Button(("confirm plan").lowercased()) { confirm("confirm") }
         .buttonStyle(RallyActionButtonStyle())
         .disabled(
           !hasChosenTime || chosenTime <= Date()
@@ -487,12 +642,32 @@ private struct RallyDetailView: View {
     }.disabled(busy || model.busy || needsRefresh)
   }
 
+  private func planField(_ title: String, value: String, prominent: Bool = false) -> some View {
+    VStack(alignment: .leading, spacing: 4) {
+      Text(title).font(.caption).foregroundStyle(RallyDesign.secondary)
+      Text(value.lowercased())
+        .font(prominent ? .system(size: 20, weight: .semibold) : .subheadline)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private func detailPanel<Content: View>(_ title: String, @ViewBuilder content: () -> Content)
+    -> some View
+  {
+    VStack(alignment: .leading, spacing: 14) {
+      Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(RallyDesign.secondary)
+      content()
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(16)
+    .background(RallyDesign.muted, in: RoundedRectangle(cornerRadius: 10))
+    .overlay(RoundedRectangle(cornerRadius: 10).stroke(RallyDesign.border, lineWidth: 1))
+  }
+
   private var confirmationMessage: String {
     switch pendingAction {
     case "delete":
       "This permanently deletes the Rally and all its responses. This can’t be undone."
-    case "cancel":
-      "This closes the Rally to new responses. You can still review the existing responses."
     default:
       "This locks the selected time and place and closes replies."
     }
@@ -553,20 +728,5 @@ private struct RallyDetailView: View {
       self.error = model.message(for: error)
       needsRefresh = true
     }
-  }
-}
-
-private struct RallyActionButtonStyle: ButtonStyle {
-  @Environment(\.isEnabled) private var isEnabled
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .font(.headline)
-      .foregroundStyle(.white)
-      .frame(maxWidth: .infinity, minHeight: 48)
-      .background(
-        Color.black.opacity(isEnabled ? 1 : 0.35), in: RoundedRectangle(cornerRadius: 10)
-      )
-      .opacity(configuration.isPressed ? 0.75 : 1)
   }
 }

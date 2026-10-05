@@ -36,6 +36,22 @@ struct RallyCalendarChecks {
     precondition(event.url == confirmed.publicUrl)
     precondition(event.notes == confirmed.finalMessage)
 
+    for (date, abbreviation) in [
+      ("2026-10-12T23:00:00Z", "EDT"),
+      ("2026-11-04T00:30:00Z", "EST"),
+    ] {
+      let value = try plan(["timeZone": "America/New_York", "finalTime": date])
+      let summary = value.localPlanSummary!
+      let local = DateFormatter()
+      local.locale = .current
+      local.timeZone = TimeZone(identifier: "America/New_York")!
+      local.dateStyle = .full
+      local.timeStyle = .short
+      precondition(summary.contains("\(local.string(from: value.finalTime!)) \(abbreviation)"))
+      precondition(summary.contains("New restaurant"))
+      precondition(summary.contains(value.publicUrl.absoluteString))
+    }
+
     // Tentative, unpublished, cancelled, and completed plans cannot start this flow.
     for status in ["draft", "open", "cancelled", "completed", "unknown"] {
       let value = try plan(["status": status])

@@ -9,13 +9,16 @@ struct LocationAutocompleteField: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Text(title).font(.subheadline.weight(.semibold))
+      Text(title.lowercased()).font(.subheadline.weight(.semibold))
       HStack(spacing: 0) {
-        TextField("Search for a place or address", text: $text)
+        TextField(("search for a place or address").lowercased(), text: $text, axis: .vertical)
+          .lineLimit(1...3)
+          .font(.system(size: 14))
           .textFieldStyle(.plain)
           .accessibilityLabel(title)
           .focused($isEditing)
           .autocorrectionDisabled()
+          .textInputAutocapitalization(.never)
           .submitLabel(.done)
           .padding(.vertical, 12)
           .onSubmit {
@@ -39,17 +42,17 @@ struct LocationAutocompleteField: View {
       }
       .padding(.leading, 12)
       .padding(.trailing, text.isEmpty ? 12 : 0)
-      .foregroundStyle(Color.black)
+      .foregroundStyle(RallyDesign.ink)
       .background(Color.white, in: RoundedRectangle(cornerRadius: cornerRadius))
       .overlay {
         RoundedRectangle(cornerRadius: cornerRadius)
-          .stroke(Color.black.opacity(cornerRadius == 0 ? 1 : 0.25), lineWidth: 1)
+          .stroke(isEditing ? RallyDesign.red : RallyDesign.border, lineWidth: 1)
       }
       if model.isLoading {
-        ProgressView("Finding places…").font(.caption)
+        ProgressView("finding places…").font(.caption)
       }
       if let message = model.message {
-        Text(message).font(.caption).foregroundStyle(.secondary)
+        Text((message).lowercased()).font(.caption).foregroundStyle(.secondary)
       }
       if !model.suggestions.isEmpty {
         VStack(alignment: .leading, spacing: 0) {
@@ -61,9 +64,10 @@ struct LocationAutocompleteField: View {
               }
             } label: {
               VStack(alignment: .leading, spacing: 3) {
-                Text(suggestion.title).font(.body)
+                Text((suggestion.title).lowercased()).font(.body)
                 if !suggestion.subtitle.isEmpty {
-                  Text(suggestion.subtitle).font(.caption).foregroundStyle(.secondary)
+                  Text((suggestion.subtitle).lowercased()).font(.caption).foregroundStyle(
+                    .secondary)
                 }
               }
               .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

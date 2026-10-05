@@ -10,6 +10,7 @@ needing an account or the app.
 ## Features
 
 - Create plans in Messages with a specific time or a poll.
+- Choose a timezone when scheduling; it starts with your phone's timezone.
 - Find a location with Google Places autocomplete, or leave it open for suggestions.
 - Sign in by email to create and share plans.
 - Track plans under Needs You, Active, and Past.
@@ -34,10 +35,14 @@ The extension inserts the plan's title and link into your message. Tap Send when
 you are ready to share it. Unfinished plans stay in memory while the extension
 remains open; there is no Save draft action in the app.
 
+Tap **Timezone** in the scheduling step to search by city or timezone, or return
+to your phone's timezone. Changing it keeps the entered local date and time in
+the selected timezone. Poll options and the review screen use that same timezone.
+
 Once a plan is confirmed, open it in Rally and tap **Add to Calendar**. Review the
 event, choose a calendar, and tap **Add** to save, or **Cancel** to return to Rally.
 Events default to one hour; you can adjust the end time in the calendar editor.
-Calendar events are separate copies and do not automatically update if you cancel
+Calendar events are separate copies and do not automatically update if you change
 or delete a Rally.
 
 ### Backend and sign-in
@@ -86,7 +91,7 @@ xcodebuild -project RallyMessages.xcodeproj -scheme RallyMessages \
   -derivedDataPath /tmp/rally-extension-build CODE_SIGNING_ALLOWED=NO build
 ```
 
-Run the integration and autocomplete checks:
+Run the integration, scheduling, autocomplete, and calendar checks:
 
 ```sh
 swiftc -module-cache-path /tmp/rally-swift-module-cache \
@@ -95,6 +100,11 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
   RallyMessagesApp/RallyAuthConfiguration.swift Tests/RallyIntegrationChecks.swift \
   Tests/RallyHTTPChecks.swift -o /tmp/rally-integration-checks
 /tmp/rally-integration-checks
+
+swiftc -module-cache-path /tmp/rally-swift-module-cache \
+  MessagesExtension/RallySchedule.swift Tests/RallyScheduleChecks.swift \
+  -o /tmp/rally-schedule-checks
+/tmp/rally-schedule-checks
 
 swiftc -module-cache-path /tmp/rally-swift-module-cache \
   Shared/RallyLocation.swift Shared/LocationAutocompleteModel.swift \

@@ -20,6 +20,7 @@ struct PlanPayload: Equatable {
   let pollCandidates: [Date]
   let locationMode: LocationMode
   let location: String
+  var timeZone: TimeZone = .current
 
   func validate(now: Date = Date()) throws {
     guard !activity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -224,7 +225,7 @@ struct RallyAPI: RallyCreating {
     let body = CreateBody(
       activity: plan.activity.trimmingCharacters(in: .whitespacesAndNewlines),
       timeMode: plan.scheduleMode.rawValue,
-      timeZone: TimeZone.current.identifier,
+      timeZone: plan.timeZone.identifier,
       startsAt: plan.specificDate.map { formatter.string(from: $0) },
       locationMode: plan.locationMode.rawValue,
       location: plan.locationMode == .open

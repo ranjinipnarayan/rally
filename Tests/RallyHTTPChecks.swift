@@ -34,59 +34,66 @@ func checkHTTPContract() async throws {
     #"{"id":"saved-id","title":"Dinner","publicUrl":"https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789","creatorToken":"private-token"}"#
       .utf8)
 
-  for timeMode in [ScheduleMode.specific, .poll] {
-    for locationMode in [LocationMode.specific, .open] {
-      let plan = PlanPayload(
-        activity: "Dinner", scheduleMode: timeMode,
-        specificDate: timeMode == .specific ? date : nil,
-        pollCandidates: timeMode == .poll ? [date] : [],
-        locationMode: locationMode, location: locationMode == .specific ? "Park" : "")
-      StubHTTP.handler = { request in
-        precondition(request.url?.absoluteString == "https://rally-your-friends.com/api/v1/rallies")
-        precondition(request.httpMethod == "POST")
-        precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-jwt")
-        precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
-        precondition(request.value(forHTTPHeaderField: "Accept") == "application/json")
-        precondition(request.value(forHTTPHeaderField: "Idempotency-Key") == nil)
-        var body = request.httpBody ?? Data()
-        if let stream = request.httpBodyStream {
-          stream.open()
-          defer { stream.close() }
-          var buffer = [UInt8](repeating: 0, count: 1024)
-          while stream.hasBytesAvailable {
-            let count = stream.read(&buffer, maxLength: buffer.count)
-            guard count > 0 else { break }
-            body.append(contentsOf: buffer.prefix(count))
+  for timeZone in [
+    TimeZone.current, TimeZone(identifier: "America/Los_Angeles")!,
+    TimeZone(identifier: "Asia/Kathmandu")!,
+  ] {
+    for timeMode in [ScheduleMode.specific, .poll] {
+      for locationMode in [LocationMode.specific, .open] {
+        let plan = PlanPayload(
+          activity: "Dinner", scheduleMode: timeMode,
+          specificDate: timeMode == .specific ? date : nil,
+          pollCandidates: timeMode == .poll ? [date] : [],
+          locationMode: locationMode, location: locationMode == .specific ? "Park" : "",
+          timeZone: timeZone)
+        StubHTTP.handler = { request in
+          precondition(
+            request.url?.absoluteString == "https://rally-your-friends.com/api/v1/rallies")
+          precondition(request.httpMethod == "POST")
+          precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-jwt")
+          precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+          precondition(request.value(forHTTPHeaderField: "Accept") == "application/json")
+          precondition(request.value(forHTTPHeaderField: "Idempotency-Key") == nil)
+          var body = request.httpBody ?? Data()
+          if let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 1024)
+            while stream.hasBytesAvailable {
+              let count = stream.read(&buffer, maxLength: buffer.count)
+              guard count > 0 else { break }
+              body.append(contentsOf: buffer.prefix(count))
+            }
           }
+          let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+          precondition(
+            Set(json.keys) == [
+              "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location",
+              "candidates",
+              "status",
+            ])
+          precondition(json["timeZone"] as? String == timeZone.identifier)
+          precondition(json["status"] as? String == "open")
+          precondition(json["timeMode"] as? String == timeMode.rawValue)
+          precondition(json["locationMode"] as? String == locationMode.rawValue)
+          if timeMode == .specific {
+            precondition(json["startsAt"] as? String == "2099-07-10T23:00:00Z")
+            precondition((json["candidates"] as? [String])?.isEmpty == true)
+          } else {
+            precondition(json["startsAt"] is NSNull)
+            precondition(json["candidates"] as? [String] == ["2099-07-10T23:00:00Z"])
+          }
+          if locationMode == .open {
+            precondition(json["location"] is NSNull)
+          } else {
+            precondition(json["location"] as? String == "Park")
+          }
+          return (201, response)
         }
-        let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+        let result = try await api.create(plan: plan, session: session)
         precondition(
-          Set(json.keys) == [
-            "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location",
-            "candidates",
-            "status",
-          ])
-        precondition(json["timeZone"] as? String == TimeZone.current.identifier)
-        precondition(json["status"] as? String == "open")
-        precondition(json["timeMode"] as? String == timeMode.rawValue)
-        precondition(json["locationMode"] as? String == locationMode.rawValue)
-        if timeMode == .specific {
-          precondition(json["startsAt"] as? String == "2099-07-10T23:00:00Z")
-          precondition((json["candidates"] as? [String])?.isEmpty == true)
-        } else {
-          precondition(json["startsAt"] is NSNull)
-          precondition(json["candidates"] as? [String] == ["2099-07-10T23:00:00Z"])
-        }
-        if locationMode == .open {
-          precondition(json["location"] is NSNull)
-        } else {
-          precondition(json["location"] as? String == "Park")
-        }
-        return (201, response)
+          result.title == "Dinner" && !result.publicURL.absoluteString.contains("private-token"))
       }
-      let result = try await api.create(plan: plan, session: session)
-      precondition(
-        result.title == "Dinner" && !result.publicURL.absoluteString.contains("private-token"))
     }
   }
 
@@ -138,7 +145,7 @@ func checkHTTPContract() async throws {
     preconditionFailure("Timeout accepted")
   } catch RallyIntegrationError.creationUncertain {}
   print(
-    "PASS: HTTP contract for all four branches, creation timezone (\(TimeZone.current.identifier)), incomplete-plan rejection, explicit nulls, bearer header, public link, error and timeout handling"
+    "PASS: HTTP contract for all four branches, phone and selected creation timezones (phone: \(TimeZone.current.identifier)), incomplete-plan rejection, explicit nulls, bearer header, public link, error and timeout handling"
   )
 }
 
@@ -183,7 +190,16 @@ func checkAccountContract() async throws {
     precondition(
       location == expected, "The editor must distinguish a real location from a placeholder")
   }
-  for action in ["save", "confirm", "cancel", "archive", "unarchive"] {
+  StubHTTP.handler = { _ in
+    preconditionFailure("Unsupported actions must be rejected before sending a request")
+  }
+  for action in ["cancel", "unknown"] {
+    do {
+      _ = try await api.update(id: id, action: action, token: "account-jwt")
+      preconditionFailure("Accepted an unsupported organizer action")
+    } catch AccountAPIError.invalidResponse {}
+  }
+  for action in ["save", "confirm", "archive", "unarchive"] {
     StubHTTP.handler = { request in
       precondition(request.httpMethod == "PATCH")
       precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")

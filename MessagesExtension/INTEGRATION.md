@@ -28,15 +28,20 @@ API input mapping:
 | --- | --- |
 | `activity` | `activity` |
 | `scheduleMode` | `timeMode` (`specific` / `poll`) |
-| `TimeZone.current.identifier` | `timeZone` |
+| `timeZone.identifier` (defaults to `TimeZone.current`) | `timeZone` |
 | `specificDate` | `startsAt` (ISO 8601 instant or null) |
 | `pollCandidates` | `candidates` (ISO 8601 instants) |
 | `locationMode` | `locationMode` (`specific` / `open`) |
 | `location` | `location` (null when open) |
 
 Creating a Rally sends `status: "open"` and requires a valid plan. Creation POSTs
-include the device's current timezone identifier as `timeZone` so link previews
-can display local times. The extension creates plans directly; it does not save
+include the organizer's selected timezone identifier as `timeZone` so link previews
+can display local times. The scheduling step defaults to the phone's timezone and
+offers a searchable timezone picker. Changing timezone preserves the entered local
+dates and clock times; date pickers, poll generation, and review use the selected
+timezone. Daylight-saving gaps advance to the next valid local time, and repeated
+times use their first occurrence. Organizer PATCH requests still omit `timeZone`.
+The extension creates plans directly; it does not save
 or publish drafts. Existing drafts in the organizer app can be finished on the
 website.
 Absent time/location fields are encoded as explicit nulls. Dates are ISO 8601
@@ -120,7 +125,8 @@ swiftc -module-cache-path /tmp/rally-swift-module-cache \
 ```
 
 Checks cover all four HTTP creation branches, exact field names/nulls, bearer
-headers, UTC dates, creation timezone and its omission from organizer updates,
+headers, UTC dates, phone/default and selected creation timezones, timezone omission
+from organizer updates,
 incomplete-plan rejection, public URL validation, HTTP errors, ambiguous timeouts,
 session gates, account changes during requests, and insertion retries.
 A read-only production `/me` probe returned the documented 401 without credentials.

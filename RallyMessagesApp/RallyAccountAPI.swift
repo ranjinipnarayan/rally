@@ -33,9 +33,26 @@ struct OrganizerDetail: Decodable {
     let publicUrl: URL
     let mapsUrl: URL?
     let finalMessage: String?
+    let timeZone: String?
     let finalTime: Date?
     let finalLocation: String?
     let candidates: [Candidate]
+
+    var localPlanSummary: String? {
+      guard let time = finalTime ?? startsAt else { return finalMessage }
+      let formatter = DateFormatter()
+      formatter.locale = .current
+      formatter.timeZone = timeZone.flatMap(TimeZone.init(identifier:)) ?? .current
+      formatter.dateStyle = .full
+      formatter.timeStyle = .short
+      let zone = formatter.timeZone.abbreviation(for: time) ?? formatter.timeZone.identifier
+      return [
+        "\(activity) is confirmed!",
+        "\(formatter.string(from: time)) \(zone)",
+        resolvedLocation,
+        publicUrl.absoluteString,
+      ].compactMap { $0 }.joined(separator: "\n")
+    }
 
     var resolvedLocation: String? {
       RallyLocation.value(finalLocation)
@@ -150,6 +167,9 @@ struct RallyAccountAPI {
     token: String
   ) async throws -> OrganizerDetail {
     guard UUID(uuidString: id) != nil else { throw AccountAPIError.invalidResponse }
+    guard ["save", "confirm", "archive", "unarchive"].contains(action) else {
+      throw AccountAPIError.invalidResponse
+    }
     var body: [String: Any] = ["action": action]
     if action == "save" || action == "confirm" {
       body["finalTime"] = time.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull()
