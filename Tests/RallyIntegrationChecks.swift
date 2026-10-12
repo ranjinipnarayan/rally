@@ -1,5 +1,18 @@
 import Foundation
 
+final class TestDeviceStore: DeviceRallyStoring {
+  var values: [String: Data] = [:]
+  var failSaving = false
+  func records() throws -> [DeviceRally] {
+    try values.values.map { try JSONDecoder().decode(DeviceRally.self, from: $0) }
+  }
+  func save(_ record: DeviceRally) throws {
+    if failSaving { throw RallyIntegrationError.deviceStorageUnavailable }
+    values[record.result.id] = try JSONEncoder().encode(record)
+  }
+  func remove(id: String) throws { values.removeValue(forKey: id) }
+}
+
 private final class TestSessions: OrganizerSessionProviding {
   var value: OrganizerSession? = OrganizerSession(
     userID: "organizer", accessToken: "test-only", expiresAt: Date().addingTimeInterval(3600)
@@ -22,7 +35,7 @@ private final class TestBackend: RallyCreating {
     publicURL: URL(
       string: "https://www.rally-your-friends.com/r/abcdefghijkmnopqrstuvwxyz23456789")!
   )
-  func create(plan: PlanPayload, session: OrganizerSession) async throws -> CreatedRally {
+  func create(plan: PlanPayload, session: OrganizerSession?) async throws -> CreatedRally {
     calls.append(plan)
     beforeReturn?()
     if let error { throw error }
@@ -42,7 +55,7 @@ private final class SuspendedBackend: RallyCreating {
       string: "https://www.rally-your-friends.com/r/abcdefghijkmnopqrstuvwxyz23456789")!
   )
 
-  func create(plan: PlanPayload, session: OrganizerSession) async throws -> CreatedRally {
+  func create(plan: PlanPayload, session: OrganizerSession?) async throws -> CreatedRally {
     calls.append(plan)
     guard calls.count == 1 else { return result }
     return try await withCheckedThrowingContinuation { continuation in
@@ -83,14 +96,16 @@ struct RallyIntegrationChecks {
       identifier: plan.timeZone.identifier == "America/Los_Angeles"
         ? "Asia/Kathmandu" : "America/Los_Angeles")!
     let zoneBackend = TestBackend()
-    let zoneModel = RallySubmissionModel(sessions: sessions, backend: zoneBackend)
+    let zoneModel = RallySubmissionModel(
+      sessions: sessions, backend: zoneBackend, deviceStore: TestDeviceStore())
     await zoneModel.submit(plan) { _ in }
     zoneModel.planDidChange(changedTimeZone)
     precondition(zoneModel.createdRally == nil, "Timezone changes must invalidate a saved result")
     await zoneModel.submit(changedTimeZone) { _ in }
     precondition(zoneBackend.calls.count == 2 && zoneBackend.calls.last == changedTimeZone)
     let backend = TestBackend()
-    let model = RallySubmissionModel(sessions: sessions, backend: backend)
+    let model = RallySubmissionModel(
+      sessions: sessions, backend: backend, deviceStore: TestDeviceStore())
     model.refreshSession()
     precondition(model.isSignedIn)
 
@@ -122,13 +137,51 @@ struct RallyIntegrationChecks {
     sessions.value = nil
     model.refreshSession()
     precondition(!model.isSignedIn && model.createdRally == nil)
-    await model.submit(plan) { _ in preconditionFailure("Signed-out sharing") }
-    precondition(backend.calls.count == 4)
+    await model.submit(plan) { _ in insertions += 1 }
+    precondition(backend.calls.count == 5 && model.createdRally != nil)
 
     sessions.value = OrganizerSession(
       userID: "organizer", accessToken: "test-only", expiresAt: .distantPast)
-    await model.submit(plan) { _ in preconditionFailure("Expired-session sharing") }
-    precondition(backend.calls.count == 4)
+    await model.submit(plan) { _ in insertions += 1 }
+    precondition(backend.calls.count == 5, "Guest insertion retry created another rally")
+
+    let guestSessions = TestSessions()
+    guestSessions.value = nil
+    let guestStore = TestDeviceStore()
+    let guestBackend = TestBackend()
+    guestBackend.result = CreatedRally(
+      id: "guest", title: "Dinner",
+      publicURL: backend.result.publicURL, creatorToken: "qrstuvwx23456789qrstuvwx23456789")
+    let guestModel = RallySubmissionModel(
+      sessions: guestSessions, backend: guestBackend, deviceStore: guestStore)
+    await guestModel.submit(plan) { rally in
+      let records = try guestStore.records()
+      precondition(records.count == 1 && records[0].result.creatorToken == rally.creatorToken)
+      precondition(records[0].ownerID == nil && records[0].plan == plan)
+      throw RallyIntegrationError.conversationUnavailable
+    }
+    precondition(guestModel.createdRally != nil && guestBackend.calls.count == 1)
+    guestModel.refreshSession()
+    precondition(guestModel.createdRally != nil, "Guest result lost after refresh")
+    await guestModel.submit(plan) { _ in }
+    precondition(guestBackend.calls.count == 1, "Guest insertion retry created a duplicate")
+    let restoredStore = TestDeviceStore()
+    restoredStore.values = guestStore.values
+    let restoredRecords = try restoredStore.records()
+    precondition(restoredRecords[0].result.creatorToken == guestBackend.result.creatorToken)
+    restoredStore.failSaving = true
+    let storageFailureBackend = TestBackend()
+    let storageFailureModel = RallySubmissionModel(
+      sessions: guestSessions, backend: storageFailureBackend, deviceStore: restoredStore)
+    await storageFailureModel.submit(plan) { _ in
+      preconditionFailure("Inserted before durable save")
+    }
+    precondition(
+      storageFailureModel.errorMessage
+        == RallyIntegrationError.deviceStorageUnavailable.localizedDescription)
+    restoredStore.failSaving = false
+    await storageFailureModel.submit(plan) { _ in }
+    precondition(storageFailureBackend.calls.count == 1, "Storage retry created a duplicate")
 
     for count in 1...3 {
       try PlanPayload(
@@ -166,7 +219,8 @@ struct RallyIntegrationChecks {
     precondition(!defaultModel.isSignedIn)
     let uncertainBackend = TestBackend()
     uncertainBackend.error = .creationUncertain
-    let uncertainModel = RallySubmissionModel(sessions: TestSessions(), backend: uncertainBackend)
+    let uncertainModel = RallySubmissionModel(
+      sessions: TestSessions(), backend: uncertainBackend, deviceStore: TestDeviceStore())
     await uncertainModel.submit(plan) { _ in preconditionFailure("Unknown creation shared") }
     precondition(uncertainModel.requiresCreationReview)
     uncertainModel.refreshSession()
@@ -177,7 +231,8 @@ struct RallyIntegrationChecks {
     let changingSessions = TestSessions()
     let changingBackend = TestBackend()
     changingBackend.beforeReturn = { changingSessions.value = nil }
-    let changingModel = RallySubmissionModel(sessions: changingSessions, backend: changingBackend)
+    let changingModel = RallySubmissionModel(
+      sessions: changingSessions, backend: changingBackend, deviceStore: TestDeviceStore())
     await changingModel.submit(plan) { _ in
       preconditionFailure("Shared after logout during request")
     }
@@ -187,7 +242,7 @@ struct RallyIntegrationChecks {
     let originalSession = refreshedSessions.value
     let suspendedBackend = SuspendedBackend()
     let refreshedModel = RallySubmissionModel(
-      sessions: refreshedSessions, backend: suspendedBackend)
+      sessions: refreshedSessions, backend: suspendedBackend, deviceStore: TestDeviceStore())
     refreshedModel.refreshSession()
     let pendingSubmission = Task { @MainActor in
       await refreshedModel.submit(plan) { _ in
@@ -210,7 +265,8 @@ struct RallyIntegrationChecks {
 
     let switchedSessions = TestSessions()
     let switchedBackend = SuspendedBackend()
-    let switchedModel = RallySubmissionModel(sessions: switchedSessions, backend: switchedBackend)
+    let switchedModel = RallySubmissionModel(
+      sessions: switchedSessions, backend: switchedBackend, deviceStore: TestDeviceStore())
     switchedModel.refreshSession()
     let previousAccountSubmission = Task { @MainActor in
       await switchedModel.submit(plan) { _ in
@@ -232,7 +288,7 @@ struct RallyIntegrationChecks {
     let staleAuthSessions = TestSessions()
     let staleAuthBackend = SuspendedBackend()
     let staleAuthModel = RallySubmissionModel(
-      sessions: staleAuthSessions, backend: staleAuthBackend)
+      sessions: staleAuthSessions, backend: staleAuthBackend, deviceStore: TestDeviceStore())
     staleAuthModel.refreshSession()
     let staleAuthSubmission = Task { @MainActor in
       await staleAuthModel.submit(plan) { _ in
@@ -255,7 +311,7 @@ struct RallyIntegrationChecks {
     let unreadableSessions = TestSessions()
     let unreadableBackend = TestBackend()
     let unreadableModel = RallySubmissionModel(
-      sessions: unreadableSessions, backend: unreadableBackend)
+      sessions: unreadableSessions, backend: unreadableBackend, deviceStore: TestDeviceStore())
     unreadableModel.refreshSession()
     precondition(unreadableModel.isSignedIn)
     unreadableSessions.error = .sessionUnavailable
@@ -268,7 +324,8 @@ struct RallyIntegrationChecks {
 
     let rejectedBackend = TestBackend()
     rejectedBackend.error = .signInRequired
-    let rejectedModel = RallySubmissionModel(sessions: TestSessions(), backend: rejectedBackend)
+    let rejectedModel = RallySubmissionModel(
+      sessions: TestSessions(), backend: rejectedBackend, deviceStore: TestDeviceStore())
     rejectedModel.refreshSession()
     await rejectedModel.submit(plan) { _ in
       preconditionFailure("Shared after authentication rejection")
@@ -277,7 +334,8 @@ struct RallyIntegrationChecks {
     precondition(
       rejectedModel.errorMessage == RallyIntegrationError.signInRequired.localizedDescription)
 
-    let duplicateModel = RallySubmissionModel(sessions: TestSessions(), backend: TestBackend())
+    let duplicateModel = RallySubmissionModel(
+      sessions: TestSessions(), backend: TestBackend(), deviceStore: TestDeviceStore())
     await duplicateModel.submit(plan) { _ in
       await duplicateModel.submit(plan) { _ in preconditionFailure("Concurrent insertion") }
     }

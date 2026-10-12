@@ -2,18 +2,18 @@ import Combine
 import Foundation
 import Security
 
-enum ScheduleMode: String {
+enum ScheduleMode: String, Codable {
   case specific
   case poll
 }
 
-enum LocationMode: String {
+enum LocationMode: String, Codable {
   case specific
   case open
 }
 
 // Domain input only. The API adapter will map this to the agreed backend schema.
-struct PlanPayload: Equatable {
+struct PlanPayload: Equatable, Codable {
   let activity: String
   let scheduleMode: ScheduleMode
   let specificDate: Date?
@@ -111,10 +111,11 @@ struct SharedKeychainSessionProvider: OrganizerSessionProviding {
   }
 }
 
-struct CreatedRally {
+struct CreatedRally: Codable {
   let id: String
   let title: String
   let publicURL: URL
+  var creatorToken: String = ""
 
   func validate() throws {
     guard !id.isEmpty, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -129,8 +130,79 @@ struct CreatedRally {
   }
 }
 
+struct DeviceRally: Codable {
+  let result: CreatedRally
+  let plan: PlanPayload
+  var ownerID: String?
+  var summary: Data?
+  let savedAt: Date
+}
+
+protocol DeviceRallyStoring {
+  func records() throws -> [DeviceRally]
+  func save(_ record: DeviceRally) throws
+  func remove(id: String) throws
+}
+
+struct SharedDeviceRallyStore: DeviceRallyStoring {
+  let configuration: SharedSessionConfiguration?
+
+  private func query(id: String? = nil) throws -> [String: Any] {
+    guard let configuration,
+      FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: configuration.appGroupID) != nil
+    else { throw RallyIntegrationError.deviceStorageUnavailable }
+    var query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrAccessGroup as String: configuration.keychainAccessGroup,
+      kSecAttrService as String: "com.example.RallyMessages.device-rallies.v1",
+    ]
+    if let id { query[kSecAttrAccount as String] = id }
+    return query
+  }
+
+  func records() throws -> [DeviceRally] {
+    var query = try query()
+    query[kSecReturnData as String] = true
+    query[kSecMatchLimit as String] = kSecMatchLimitAll
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    if status == errSecItemNotFound { return [] }
+    guard status == errSecSuccess, let values = result as? [Data] else {
+      throw RallyIntegrationError.deviceStorageUnavailable
+    }
+    return try values.map { try JSONDecoder().decode(DeviceRally.self, from: $0) }
+      .sorted { $0.savedAt > $1.savedAt }
+  }
+
+  func save(_ record: DeviceRally) throws {
+    let query = try query(id: record.result.id)
+    let attributes: [String: Any] = [
+      kSecValueData as String: try JSONEncoder().encode(record),
+      kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+    ]
+    let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+    if status == errSecItemNotFound {
+      var item = query
+      for (key, value) in attributes { item[key] = value }
+      guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
+        throw RallyIntegrationError.deviceStorageUnavailable
+      }
+    } else if status != errSecSuccess {
+      throw RallyIntegrationError.deviceStorageUnavailable
+    }
+  }
+
+  func remove(id: String) throws {
+    let status = SecItemDelete(try query(id: id) as CFDictionary)
+    guard status == errSecSuccess || status == errSecItemNotFound else {
+      throw RallyIntegrationError.deviceStorageUnavailable
+    }
+  }
+}
+
 protocol RallyCreating {
-  func create(plan: PlanPayload, session: OrganizerSession) async throws -> CreatedRally
+  func create(plan: PlanPayload, session: OrganizerSession?) async throws -> CreatedRally
 }
 
 struct RallyAPI: RallyCreating {
@@ -183,7 +255,7 @@ struct RallyAPI: RallyCreating {
     let id: String
     let title: String
     let publicUrl: URL
-    // Deliberately do not decode or retain creatorToken / inviteToken.
+    let creatorToken: String
   }
 
   private struct ErrorResponse: Decodable {
@@ -206,12 +278,17 @@ struct RallyAPI: RallyCreating {
     }
   }
 
-  func create(plan: PlanPayload, session: OrganizerSession) async throws -> CreatedRally {
+  func create(plan: PlanPayload, session: OrganizerSession?) async throws -> CreatedRally {
     try plan.validate()
     let responseData = try await send(plan: plan, session: session)
     do {
       let saved = try JSONDecoder().decode(CreateResponse.self, from: responseData)
-      let rally = CreatedRally(id: saved.id, title: saved.title, publicURL: saved.publicUrl)
+      let rally = CreatedRally(
+        id: saved.id, title: saved.title, publicURL: saved.publicUrl,
+        creatorToken: saved.creatorToken)
+      guard UUID(uuidString: rally.id) != nil,
+        rally.creatorToken.range(of: "^[a-z0-9]{16,64}$", options: .regularExpression) != nil
+      else { throw RallyIntegrationError.creationUncertain }
       try rally.validate()
       return rally
     } catch {
@@ -219,8 +296,8 @@ struct RallyAPI: RallyCreating {
     }
   }
 
-  private func send(plan: PlanPayload, session: OrganizerSession) async throws -> Data {
-    guard session.isValid else { throw RallyIntegrationError.signInRequired }
+  private func send(plan: PlanPayload, session: OrganizerSession?) async throws -> Data {
+    if let session, !session.isValid { throw RallyIntegrationError.signInRequired }
     let formatter = ISO8601DateFormatter()
     let body = CreateBody(
       activity: plan.activity.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -236,7 +313,9 @@ struct RallyAPI: RallyCreating {
     guard data.count <= 16_384 else { throw RallyIntegrationError.invalidPlan }
     var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData)
     request.httpMethod = "POST"
-    request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+    if let session {
+      request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+    }
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = data
@@ -269,17 +348,19 @@ struct RallyAPI: RallyCreating {
 }
 
 enum RallyIntegrationError: LocalizedError {
-  case sessionUnavailable, signInRequired, invalidPlan
+  case sessionUnavailable, signInRequired, invalidPlan, deviceStorageUnavailable
   case creationUncertain
   case requestRejected(String)
   case invalidPublicURL, conversationUnavailable, organizerChanged
 
   var errorDescription: String? {
     switch self {
+    case .deviceStorageUnavailable:
+      "Couldn’t save your Rally on this device. Unlock your phone and try again; your saved link will be reused."
     case .creationUncertain:
-      "Rally may have been saved, but its link didn’t arrive. Check My Rallies on the website before creating another."
+      "Rally may have been saved, but its link didn’t arrive. Its creation couldn’t be verified. Don’t create the same plan again."
     case .requestRejected(let message): message
-    case .sessionUnavailable: "Couldn’t read your Rally session. Open Rally to sign in."
+    case .sessionUnavailable: "Couldn’t read your Rally session. Unlock your device and try again."
     case .signInRequired: "Open Rally to sign in."
     case .invalidPlan:
       "Check your plan, location, and future times. Poll options must be different."
@@ -300,11 +381,13 @@ final class RallySubmissionModel: ObservableObject {
 
   private let sessions: OrganizerSessionProviding
   private let backend: RallyCreating
+  private let deviceStore: DeviceRallyStoring
   private struct CreationAttempt {
     let plan: PlanPayload
-    let organizerID: String
+    let organizerID: String?
     var outcomeUncertain = false
     var result: CreatedRally?
+    var persisted = false
   }
 
   // Keep the request identity separate from visible authentication state. A
@@ -313,10 +396,12 @@ final class RallySubmissionModel: ObservableObject {
 
   init(
     sessions: OrganizerSessionProviding = SharedKeychainSessionProvider(configuration: .configured),
-    backend: RallyCreating = RallyAPI()
+    backend: RallyCreating = RallyAPI(),
+    deviceStore: DeviceRallyStoring = SharedDeviceRallyStore(configuration: .configured)
   ) {
     self.sessions = sessions
     self.backend = backend
+    self.deviceStore = deviceStore
   }
 
   func refreshSession() {
@@ -324,7 +409,7 @@ final class RallySubmissionModel: ObservableObject {
       let session = try sessions.session()
       isSignedIn = session?.isValid == true
       createdRally =
-        isSignedIn && session?.userID == attempt?.organizerID
+        (attempt?.organizerID == nil || (isSignedIn && session?.userID == attempt?.organizerID))
         ? attempt?.result : nil
       requiresCreationReview = attempt?.outcomeUncertain == true
       errorMessage =
@@ -355,22 +440,23 @@ final class RallySubmissionModel: ObservableObject {
     var creationStarted = false
 
     do {
-      guard let session = try sessions.session(), session.isValid else {
-        isSignedIn = false
-        throw RallyIntegrationError.signInRequired
-      }
+      let snapshot = try sessions.session()
+      let session = snapshot?.isValid == true ? snapshot : nil
       if requiresCreationReview {
         throw RallyIntegrationError.creationUncertain
       }
       requestSession = session
-      isSignedIn = true
-      if attempt?.plan != plan || attempt?.organizerID != session.userID {
-        attempt = CreationAttempt(plan: plan, organizerID: session.userID)
+      isSignedIn = session != nil
+      if attempt?.plan != plan
+        || (attempt?.result == nil && attempt?.organizerID != session?.userID)
+      {
+        attempt = CreationAttempt(plan: plan, organizerID: session?.userID)
         createdRally = nil
       }
       guard let currentAttempt = attempt else { return }
       if currentAttempt.result == nil {
         try plan.validate()
+        _ = try deviceStore.records()
         creationStarted = true
         let result = try await backend.create(plan: plan, session: session)
         try result.validate()
@@ -378,13 +464,22 @@ final class RallySubmissionModel: ObservableObject {
         // only the creating organizer can expose it or insert its link.
         attempt?.result = result
       }
-      guard let current = try sessions.session(), current.isValid else {
-        throw RallyIntegrationError.signInRequired
+      if let result = attempt?.result, attempt?.persisted == false {
+        try deviceStore.save(
+          DeviceRally(
+            result: result, plan: plan,
+            ownerID: attempt?.organizerID, summary: nil, savedAt: Date()))
+        attempt?.persisted = true
       }
-      isSignedIn = true
-      guard current.userID == session.userID else {
-        createdRally = nil
-        throw RallyIntegrationError.organizerChanged
+      if let organizerID = attempt?.organizerID {
+        guard let current = try sessions.session(), current.isValid else {
+          throw RallyIntegrationError.signInRequired
+        }
+        isSignedIn = true
+        guard current.userID == organizerID else {
+          createdRally = nil
+          throw RallyIntegrationError.organizerChanged
+        }
       }
       createdRally = attempt?.result
       guard let createdRally else { return }

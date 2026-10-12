@@ -18,7 +18,8 @@ the restricted-key setup; no recommendations or map views are added.
 `RallyAPI` implements `RallyCreating.create` using the production endpoint
 `POST https://rally-your-friends.com/api/v1/rallies`. The contract is
 [docs/api.md](https://github.com/ranjinipnarayan/rally-your-friends/blob/main/docs/api.md).
-It sends the shared user access token as a Bearer credential, JSON content type,
+It sends a valid shared user access token as a Bearer credential when available,
+omits Authorization for guest creation, and sends JSON content type,
 and `Accept: application/json`. It uses an ephemeral, cookie-free session and
 refuses redirects. No generated web RPC or direct database call is used.
 
@@ -46,12 +47,15 @@ or publish drafts. Existing drafts in the organizer app can be finished on the
 website.
 Absent time/location fields are encoded as explicit nulls. Dates are ISO 8601
 instants in UTC, and payloads are checked against the 16 KiB limit. Creation
-requires HTTP 201. The response decoder retains `id`, `title`, and `publicUrl`,
-ignoring the private creator token. The API derives ownership from
-authentication and owns lifecycle, `next_action`, responses, and finalization.
+requires HTTP 201. The response decoder validates and retains `id`, `title`, `publicUrl`, and
+`creatorToken`. The complete device record is stored in shared Keychain with
+WhenUnlockedThisDeviceOnly accessibility before inserting the public link.
+The private credential never enters message text, defaults, logs, or recipient URLs. The API derives account ownership from authentication; absent credentials create
+an unclaimed guest rally. It owns lifecycle, `next_action`, responses, and finalization.
 
 The organizer app deletes a Rally only after an explicit confirmation. It sends
-`DELETE /api/v1/rallies/:id` with the owner's Bearer token and no body, accepts
+`DELETE /api/v1/rallies/:id` with the owner's Bearer token or the guest creator
+header and no body, accepts
 `204 No Content` without JSON decoding, removes the local item, and refreshes
 the list. An uncertain deletion requires a refresh before another attempt;
 a subsequent `404` removes the unavailable detail from the native UI.
@@ -66,13 +70,15 @@ API v1 does not support idempotency keys. Duplicate submissions are disabled.
 Once creation succeeds, message-insertion retries reuse that saved result without
 another POST. A network error, 5xx, unexpected status, or unreadable success
 response may follow a saved creation, so the extension blocks further POSTs in
-that composer and offers “Review My Rallies” on the website. It does not assume
+that composer and offers “Check saved rallies” in the containing app. Guest creation responses
+that were lost cannot be recovered by listing an anonymous account. It does not assume
 failure or silently create another Rally. This guard and the unfinished plan are
-in memory only; after restarting, check the organizer's Rallies before recreating
-an uncertain plan. Durable cross-process recovery is not implemented.
+in memory only. Successful returned rallies remain in shared Keychain across
+process restarts; an unknown creation response cannot be recovered this way.
+Check account-owned rallies before recreating an uncertain authenticated plan.
 
-Explicit API rejections (such as 400/409) preserve the plan for correction. A 401
-requires signing in via the containing app; a stale rejection cannot sign out a
+Explicit API rejections (such as 400/409) preserve the plan for correction. An authenticated creation 401
+requires refreshing sign-in via the containing app; a stale rejection cannot sign out a
 newly switched account or a refreshed session. Session changes cannot expose
 another organizer's returned link. The app must own token refresh and logout.
 
@@ -92,11 +98,25 @@ The extension reads an access-token snapshot from the shared Keychain;
 only the app refreshes the session. Tokens use WhenUnlockedThisDeviceOnly
 accessibility and are never stored in defaults, links, or logs.
 
-The form can be filled out before sign-in. Create Rally prompts
-“Open Rally to sign in” if no valid shared session exists. The alert opens the
-containing app. Returning to Messages rereads the shared session. The organizer
-then taps Create Rally again. Unsaved form state survives only
-while the extension process remains alive.
+Creation is available without sign-in; there is no first-screen sign-in callout
+or forced app launch. A valid shared session creates an account-owned Rally;
+a missing or locally expired session creates a guest Rally without Authorization.
+An unreadable Keychain fails before creation. An explicit server 401 never
+silently retries as a guest.
+
+The containing app enumerates device records, shows cached guest summaries while
+signed out, and refreshes each using GET `/rallies/:id` with
+`X-Rally-Creator-Token`. Guest PATCH and DELETE use the same header without
+Authorization; account-owned operations use the verified account session.
+Guests use the same response/finalization/calendar UI. Cached summaries are
+updated from server details, and a 404 removes the unavailable device record.
+
+Signing in does not claim rallies automatically. **Save to my account** sends
+POST `/rallies/:id/claim` with both the Bearer and creator token, no body, and
+requires `200 { "saved": true }`. The device record then remembers the owning
+account; the creator token alone cannot manage a claimed Rally. A returned
+account list also reconciles local ownership after a lost claim response.
+Sign-out keeps unclaimed device rallies and hides account-owned records.
 
 Both targets include App Group and Keychain entitlements. Provisioning and the
 Supabase callback allowlist must be configured as described in [README](../README.md).

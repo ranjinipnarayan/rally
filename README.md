@@ -12,7 +12,9 @@ needing an account or the app.
 - Create plans in Messages with a specific time or a poll.
 - Choose a timezone when scheduling; it starts with your phone's timezone.
 - Find a location with Google Places autocomplete, or leave it open for suggestions.
-- Sign in by email to create and share plans.
+- Create and share plans in Messages without signing in.
+- See and manage guest rallies saved securely on this device.
+- Optionally sign in by email and save guest rallies to your account for cross-device access.
 - Track plans under Needs You, Active, and Past.
 - Swipe left on a Rally in any section to delete it after confirmation.
 - Review responses, confirm the details, and share the final plan.
@@ -28,12 +30,23 @@ Development requires macOS and Xcode. The app targets iOS 17 and later.
    profiles that support their App Groups and Keychain Sharing capabilities.
 3. Review the authentication configuration described below.
 4. Run the `RallyMessages` scheme on your iPhone. The welcome screen explains how
-   to create a Rally; tap **See your rallies** to sign up or log in.
+   to create a Rally. Sign-in is optional.
 5. Open a conversation in Messages and choose **+ → Rally** to create a plan.
 
-The extension inserts the plan's title and link into your message. Tap Send when
-you are ready to share it. Unfinished plans stay in memory while the extension
-remains open; there is no Save draft action in the app.
+The extension creates a published Rally and inserts its title and public RSVP
+link into your message. Tap Send when you are ready to share it. You do not need
+to open the containing app or sign in first. Each created Rally and its private
+management credential are saved in shared, device-only Keychain storage before
+message insertion. The app shows guest rallies while signed out and refreshes
+their responses and details using that credential. It keeps cached summaries
+when a refresh fails. Unfinished form entries remain in memory only.
+
+Sign in for cross-device access, then open a guest Rally and tap **Save to my
+account**. Claiming is explicit. Claimed rallies require that account's session
+to manage; guest rallies stay available on this device after signing out.
+Device records are not synced or backed up to other devices. If a creation
+response is lost, the API cannot recover the unknown guest creator credential;
+the extension blocks automatic creation retries in that composer.
 
 Tap **Timezone** in the scheduling step to search by city or timezone, or return
 to your phone's timezone. Changing it keeps the entered local date and time in

@@ -5,7 +5,7 @@ struct RallyAccount: Decodable {
   let email: String?
 }
 
-struct OrganizerRally: Decodable, Identifiable {
+struct OrganizerRally: Codable, Identifiable {
   let id: String
   let activity: String
   let publicUrl: URL
@@ -49,7 +49,7 @@ struct OrganizerDetail: Decodable {
       return [
         "\(activity) is confirmed!",
         "\(formatter.string(from: time)) \(zone)",
-        resolvedLocation,
+        RallyLocation.displayName(resolvedLocation),
         publicUrl.absoluteString,
       ].compactMap { $0 }.joined(separator: "\n")
     }
@@ -157,17 +157,22 @@ struct RallyAccountAPI {
     return envelope.rallies
   }
 
-  func detail(id: String, token: String) async throws -> OrganizerDetail {
+  func detail(id: String, token: String? = nil, creatorToken: String? = nil) async throws
+    -> OrganizerDetail
+  {
     guard UUID(uuidString: id) != nil else { throw AccountAPIError.invalidResponse }
-    return try await request(path: "rallies/\(id)", token: token)
+    let detail: OrganizerDetail = try await request(
+      path: "rallies/\(id)", token: token, creatorToken: creatorToken)
+    guard detail.rally.id == id else { throw AccountAPIError.invalidResponse }
+    return detail
   }
 
   func update(
     id: String, action: String, time: Date? = nil, location: String? = nil,
-    token: String
+    token: String? = nil, creatorToken: String? = nil
   ) async throws -> OrganizerDetail {
     guard UUID(uuidString: id) != nil else { throw AccountAPIError.invalidResponse }
-    guard ["save", "confirm", "archive", "unarchive"].contains(action) else {
+    guard ["save", "confirm"].contains(action) else {
       throw AccountAPIError.invalidResponse
     }
     var body: [String: Any] = ["action": action]
@@ -177,17 +182,29 @@ struct RallyAccountAPI {
         RallyLocation.value(location) as Any? ?? NSNull()
     }
     return try await request(
-      path: "rallies/\(id)", token: token,
+      path: "rallies/\(id)", token: token, creatorToken: creatorToken,
       body: JSONSerialization.data(withJSONObject: body))
   }
 
-  func delete(id: String, token: String) async throws {
+  func delete(id: String, token: String? = nil, creatorToken: String? = nil) async throws {
     guard UUID(uuidString: id) != nil else { throw AccountAPIError.invalidResponse }
     do {
       _ = try await requestData(
-        path: "rallies/\(id)", token: token, method: "DELETE", successStatus: 204)
+        path: "rallies/\(id)", token: token, creatorToken: creatorToken, method: "DELETE",
+        successStatus: 204)
     } catch AccountAPIError.uncertainMutation {
       throw AccountAPIError.uncertainDeletion
+    }
+  }
+
+  func claim(id: String, token: String, creatorToken: String) async throws {
+    guard UUID(uuidString: id) != nil else { throw AccountAPIError.invalidResponse }
+    let data = try await requestData(
+      path: "rallies/\(id)/claim", token: token,
+      creatorToken: creatorToken, method: "POST")
+    struct Result: Decodable { let saved: Bool }
+    guard let result = try? JSONDecoder().decode(Result.self, from: data), result.saved else {
+      throw AccountAPIError.uncertainMutation
     }
   }
 
@@ -206,24 +223,32 @@ struct RallyAccountAPI {
     let error: Detail
   }
 
-  private func request<T: Decodable>(path: String, token: String, body: Data? = nil) async throws
+  private func request<T: Decodable>(
+    path: String, token: String? = nil, creatorToken: String? = nil, body: Data? = nil
+  ) async throws
     -> T
   {
     let data = try await requestData(
-      path: path, token: token, method: body == nil ? "GET" : "PATCH", body: body)
+      path: path, token: token, creatorToken: creatorToken, method: body == nil ? "GET" : "PATCH",
+      body: body)
     do { return try Self.decoder().decode(T.self, from: data) } catch {
       throw body == nil ? AccountAPIError.invalidResponse : AccountAPIError.uncertainMutation
     }
   }
 
   private func requestData(
-    path: String, token: String, method: String, body: Data? = nil, successStatus: Int = 200
+    path: String, token: String? = nil, creatorToken: String? = nil, method: String,
+    body: Data? = nil, successStatus: Int = 200
   ) async throws -> Data {
     let isMutation = method != "GET"
     var request = URLRequest(
       url: baseURL.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData)
     request.httpMethod = method
-    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    guard token != nil || creatorToken != nil else { throw AccountAPIError.unauthorized }
+    if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+    if let creatorToken {
+      request.setValue(creatorToken, forHTTPHeaderField: "X-Rally-Creator-Token")
+    }
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     if let body {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")

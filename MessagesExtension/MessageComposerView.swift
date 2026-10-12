@@ -20,11 +20,8 @@ struct MessageComposerView: View {
   let isExpanded: Bool
   @ObservedObject var submission: RallySubmissionModel
   let onExpand: () -> Void
-  var onSignIn: () async -> Bool = { false }
   let onSendPlan: (PlanPayload) -> Void
 
-  @State private var showSignInPrompt = false
-  @State private var showOpenAppHelp = false
   @State private var showTimeZonePicker = false
 
   @State private var step: ComposerStep = .activity
@@ -60,23 +57,6 @@ struct MessageComposerView: View {
         schedule.changeTimeZone(to: zone)
       }
     }
-    .alert(("Sign in to create your Rally").lowercased(), isPresented: $showSignInPrompt) {
-      Button(("open rally").lowercased()) {
-        Task { showOpenAppHelp = !(await onSignIn()) }
-      }
-      Button(("cancel").lowercased(), role: .cancel) {}
-    } message: {
-      Text(
-        ("open rally to sign in. your entries will stay here while this extension remains open.")
-          .lowercased())
-    }
-    .alert(("Open Rally from your Home Screen").lowercased(), isPresented: $showOpenAppHelp) {
-      Button(("ok").lowercased(), role: .cancel) {}
-    } message: {
-      Text(
-        ("messages couldn’t open rally. open the rally app, sign in, then return here to create your rally.")
-          .lowercased())
-    }
     .onChange(of: currentPayload) { _, plan in
       submission.planDidChange(plan)
     }
@@ -94,10 +74,6 @@ struct MessageComposerView: View {
           }
           Text(("drive the plan out of the groupchat").lowercased())
             .font(.subheadline)
-          if !submission.isSignedIn {
-            Text(("open rally to sign in when you’re ready to create your rally.").lowercased())
-              .font(.subheadline)
-          }
           PrimaryButton(title: "Create a plan", action: onExpand)
         }
         .frame(maxWidth: .infinity, minHeight: geometry.size.height)
@@ -338,8 +314,8 @@ struct MessageComposerView: View {
       }
       if submission.requiresCreationReview {
         Link(
-          ("review my rallies").lowercased(),
-          destination: URL(string: "https://rally-your-friends.com/my-rallies")!
+          ("check saved rallies").lowercased(),
+          destination: URL(string: "com.example.RallyMessages://rallies")!
         )
         .font(.headline)
       }
@@ -352,11 +328,7 @@ struct MessageComposerView: View {
         disabled: submission.isSubmitting || submission.requiresCreationReview
       ) {
         submission.refreshSession()
-        if submission.isSignedIn {
-          onSendPlan(currentPayload)
-        } else {
-          showSignInPrompt = true
-        }
+        onSendPlan(currentPayload)
       }
     }
   }

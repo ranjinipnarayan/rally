@@ -68,9 +68,22 @@ private actor AuthRequests {
 
 private final class AccountHTTP: URLProtocol {
   static var verifiedID = userID
+  static var customHandler: ((URLRequest) -> (Int, Data))?
   override class func canInit(with request: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {
+    if let handler = Self.customHandler {
+      let (status, data) = handler(request)
+      client?.urlProtocol(
+        self,
+        didReceive: HTTPURLResponse(
+          url: request.url!, statusCode: status,
+          httpVersion: nil, headerFields: ["Content-Type": "application/json"])!,
+        cacheStoragePolicy: .notAllowed)
+      client?.urlProtocol(self, didLoad: data)
+      client?.urlProtocolDidFinishLoading(self)
+      return
+    }
     precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access-token")
     let json: String
     switch request.url?.path {
@@ -92,6 +105,13 @@ private final class AccountHTTP: URLProtocol {
   override func stopLoading() {}
 }
 
+private final class AuthDeviceStore: DeviceRallyStoring {
+  var values: [String: DeviceRally] = [:]
+  func records() throws -> [DeviceRally] { Array(values.values) }
+  func save(_ record: DeviceRally) throws { values[record.result.id] = record }
+  func remove(id: String) throws { values.removeValue(forKey: id) }
+}
+
 @MainActor
 private struct SignInHarness {
   let storage: MemoryAuthStorage
@@ -99,7 +119,7 @@ private struct SignInHarness {
   let auth: AuthClient
   let model: RallyAccountModel
 
-  init(storageAvailable: Bool = true) {
+  init(storageAvailable: Bool = true, deviceStore: DeviceRallyStoring = AuthDeviceStore()) {
     storage = MemoryAuthStorage(isAvailable: storageAvailable)
     auth = AuthClient(
       url: URL(string: "https://auth.example.com/auth/v1")!, flowType: .pkce,
@@ -110,7 +130,8 @@ private struct SignInHarness {
     configuration.protocolClasses = [AccountHTTP.self]
     model = RallyAccountModel(
       auth: auth, storage: storage,
-      api: RallyAccountAPI(transport: URLSession(configuration: configuration)))
+      api: RallyAccountAPI(transport: URLSession(configuration: configuration)),
+      deviceStore: deviceStore)
   }
 
   func checkSignedIn() throws {
@@ -239,5 +260,129 @@ struct RallyAuthChecks {
     precondition(unconfiguredRequests.isEmpty)
     print(
       "PASS: mismatched identity and unavailable shared storage cannot authenticate the extension")
+    let guestStore = AuthDeviceStore()
+    let guestID = "33333333-3333-4333-8333-333333333333"
+    let guestToken = "qrstuvwx23456789qrstuvwx23456789"
+    let plan = PlanPayload(
+      activity: "Dinner", scheduleMode: .specific,
+      specificDate: .distantFuture, pollCandidates: [], locationMode: .open, location: "")
+    try guestStore.save(
+      DeviceRally(
+        result: CreatedRally(
+          id: guestID, title: "Dinner",
+          publicURL: URL(
+            string: "https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789")!,
+          creatorToken: guestToken), plan: plan, ownerID: nil, summary: nil, savedAt: Date()))
+    let guest = SignInHarness(deviceStore: guestStore)
+    let detailJSON = Data(
+      """
+      {"rally":{"id":"\(guestID)","activity":"Dinner","timeMode":"specific",
+      "startsAt":"2099-07-10T23:00:00Z","locationMode":"open","location":null,
+      "status":"open","nextAction":"choose_location","archivedAt":null,
+      "publishedAt":"2099-01-01T00:00:00Z",
+      "publicUrl":"https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789",
+      "candidates":[]},"responses":[]}
+      """.utf8)
+    AccountHTTP.customHandler = { request in
+      precondition(request.value(forHTTPHeaderField: "Authorization") == nil)
+      precondition(request.value(forHTTPHeaderField: "X-Rally-Creator-Token") == guestToken)
+      precondition(request.url?.path == "/api/v1/rallies/\(guestID)")
+      if request.httpMethod == "DELETE" { return (204, Data()) }
+      return (200, detailJSON)
+    }
+    await guest.model.refresh()
+    precondition(guest.model.account == nil && guest.model.rallies.count == 1)
+    precondition(guest.model.rallies[0].section == "needs_you")
+    _ = try await guest.model.detail(id: guestID)
+    _ = try await guest.model.update(id: guestID, action: "save", location: "Park")
+    let reopened = SignInHarness(deviceStore: guestStore)
+    await reopened.model.refresh()
+    precondition(reopened.model.rallies.count == 1)
+    AccountHTTP.customHandler = { _ in (503, Data()) }
+    await reopened.model.refresh()
+    precondition(reopened.model.rallies.count == 1 && reopened.model.errorMessage != nil)
+    AccountHTTP.customHandler = { request in
+      if request.url?.path == "/api/v1/me" {
+        return (200, Data("{\"user\":{\"id\":\"\(userID)\",\"email\":null}}".utf8))
+      }
+      if request.url?.path == "/api/v1/rallies" { return (200, Data(#"{"rallies":[]}"#.utf8)) }
+      precondition(request.value(forHTTPHeaderField: "Authorization") == nil)
+      return (200, detailJSON)
+    }
+    await guest.model.verifyCode(email: "rally@example.com", code: "123456")
+    precondition(guest.model.account?.id == userID)
+    await guest.model.signOut()
+    precondition(
+      guest.model.account == nil && guest.model.rallies.count == 1,
+      "Sign-out discarded an unclaimed device rally")
+    await guest.model.verifyCode(email: "rally@example.com", code: "123456")
+    precondition(guest.model.account?.id == userID)
+    AccountHTTP.customHandler = { request in
+      if request.url?.path == "/api/v1/me" {
+        return (200, Data("{\"user\":{\"id\":\"\(userID)\",\"email\":null}}".utf8))
+      }
+      if request.url?.path == "/api/v1/rallies" { return (503, Data()) }
+      precondition(request.value(forHTTPHeaderField: "Authorization") == nil)
+      return (200, detailJSON)
+    }
+    await guest.model.refresh()
+    precondition(
+      guest.model.isGuestRally(id: guestID),
+      "An account-list failure must not claim a cached guest rally")
+    AccountHTTP.customHandler = { request in
+      if request.url?.path == "/api/v1/rallies/\(guestID)/claim" {
+        precondition(request.httpMethod == "POST")
+        precondition(
+          request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access-token")
+        precondition(request.value(forHTTPHeaderField: "X-Rally-Creator-Token") == guestToken)
+        return (200, Data(#"{"saved":true}"#.utf8))
+      }
+      if request.url?.path == "/api/v1/me" {
+        return (200, Data("{\"user\":{\"id\":\"\(userID)\",\"email\":null}}".utf8))
+      }
+      if request.url?.path == "/api/v1/rallies" {
+        return (
+          200,
+          Data(
+            """
+            {"rallies":[{"id":"\(guestID)","activity":"Dinner",
+            "publicUrl":"https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789",
+            "time":null,"location":null,"status":"open","nextAction":"choose_location",
+            "section":"needs_you","archivedAt":null,"responseCount":0}]}
+            """.utf8)
+        )
+      }
+      precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-access-token")
+      precondition(request.value(forHTTPHeaderField: "X-Rally-Creator-Token") == nil)
+      return (200, detailJSON)
+    }
+    try await guest.model.claim(id: guestID)
+    precondition(!guest.model.isGuestRally(id: guestID))
+    _ = try await guest.model.detail(id: guestID)
+    await guest.model.signOut()
+    precondition(guest.model.account == nil && guest.model.rallies.isEmpty)
+    let claimedRecords = try guestStore.records()
+    precondition(claimedRecords.count == 1)
+    let deletedStore = AuthDeviceStore()
+    try deletedStore.save(
+      DeviceRally(
+        result: CreatedRally(
+          id: guestID, title: "Dinner",
+          publicURL: URL(
+            string: "https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789")!,
+          creatorToken: guestToken), plan: plan, ownerID: nil, summary: nil, savedAt: Date()))
+    let deletedGuest = SignInHarness(deviceStore: deletedStore)
+    AccountHTTP.customHandler = { request in
+      precondition(request.value(forHTTPHeaderField: "Authorization") == nil)
+      precondition(request.value(forHTTPHeaderField: "X-Rally-Creator-Token") == guestToken)
+      return request.httpMethod == "DELETE" ? (204, Data()) : (200, detailJSON)
+    }
+    await deletedGuest.model.refresh()
+    try await deletedGuest.model.delete(id: guestID)
+    precondition(deletedGuest.model.rallies.isEmpty && deletedStore.values.isEmpty)
+    AccountHTTP.customHandler = nil
+    print(
+      "PASS: guest rallies reopen, refresh, edit, and survive offline; explicit claiming switches to account ownership"
+    )
   }
 }

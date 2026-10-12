@@ -38,14 +38,6 @@ final class MessagesViewController: MSMessagesAppViewController {
       onExpand: { [weak self] in
         self?.requestPresentationStyle(.expanded)
       },
-      onSignIn: { [weak self] in
-        guard let context = self?.extensionContext,
-          let url = URL(string: "com.example.RallyMessages://signin")
-        else { return false }
-        return await withCheckedContinuation { continuation in
-          context.open(url) { opened in continuation.resume(returning: opened) }
-        }
-      },
       onSendPlan: { [weak self] plan in
         self?.insertPlan(plan)
       }

@@ -31,70 +31,76 @@ func checkHTTPContract() async throws {
     userID: "test-user", accessToken: "test-jwt", expiresAt: .distantFuture)
   let date = ISO8601DateFormatter().date(from: "2099-07-10T23:00:00Z")!
   let response = Data(
-    #"{"id":"saved-id","title":"Dinner","publicUrl":"https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789","creatorToken":"private-token"}"#
+    #"{"id":"11111111-1111-4111-8111-111111111111","title":"Dinner","publicUrl":"https://rally-your-friends.com/r/abcdefgh23456789abcdefgh23456789","creatorToken":"qrstuvwx23456789qrstuvwx23456789"}"#
       .utf8)
 
-  for timeZone in [
-    TimeZone.current, TimeZone(identifier: "America/Los_Angeles")!,
-    TimeZone(identifier: "Asia/Kathmandu")!,
-  ] {
-    for timeMode in [ScheduleMode.specific, .poll] {
-      for locationMode in [LocationMode.specific, .open] {
-        let plan = PlanPayload(
-          activity: "Dinner", scheduleMode: timeMode,
-          specificDate: timeMode == .specific ? date : nil,
-          pollCandidates: timeMode == .poll ? [date] : [],
-          locationMode: locationMode, location: locationMode == .specific ? "Park" : "",
-          timeZone: timeZone)
-        StubHTTP.handler = { request in
-          precondition(
-            request.url?.absoluteString == "https://rally-your-friends.com/api/v1/rallies")
-          precondition(request.httpMethod == "POST")
-          precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-jwt")
-          precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
-          precondition(request.value(forHTTPHeaderField: "Accept") == "application/json")
-          precondition(request.value(forHTTPHeaderField: "Idempotency-Key") == nil)
-          var body = request.httpBody ?? Data()
-          if let stream = request.httpBodyStream {
-            stream.open()
-            defer { stream.close() }
-            var buffer = [UInt8](repeating: 0, count: 1024)
-            while stream.hasBytesAvailable {
-              let count = stream.read(&buffer, maxLength: buffer.count)
-              guard count > 0 else { break }
-              body.append(contentsOf: buffer.prefix(count))
+  for credential in [session, nil] as [OrganizerSession?] {
+    for timeZone in [
+      TimeZone.current, TimeZone(identifier: "America/Los_Angeles")!,
+      TimeZone(identifier: "Asia/Kathmandu")!,
+    ] {
+      for timeMode in [ScheduleMode.specific, .poll] {
+        for locationMode in [LocationMode.specific, .open] {
+          let plan = PlanPayload(
+            activity: "Dinner", scheduleMode: timeMode,
+            specificDate: timeMode == .specific ? date : nil,
+            pollCandidates: timeMode == .poll ? [date] : [],
+            locationMode: locationMode, location: locationMode == .specific ? "Park" : "",
+            timeZone: timeZone)
+          StubHTTP.handler = { request in
+            precondition(
+              request.url?.absoluteString == "https://rally-your-friends.com/api/v1/rallies")
+            precondition(request.httpMethod == "POST")
+            precondition(
+              request.value(forHTTPHeaderField: "Authorization")
+                == credential.map { "Bearer \($0.accessToken)" })
+            precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            precondition(request.value(forHTTPHeaderField: "Accept") == "application/json")
+            precondition(request.value(forHTTPHeaderField: "Idempotency-Key") == nil)
+            var body = request.httpBody ?? Data()
+            if let stream = request.httpBodyStream {
+              stream.open()
+              defer { stream.close() }
+              var buffer = [UInt8](repeating: 0, count: 1024)
+              while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                guard count > 0 else { break }
+                body.append(contentsOf: buffer.prefix(count))
+              }
             }
+            let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+            precondition(
+              Set(json.keys) == [
+                "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location",
+                "candidates",
+                "status",
+              ])
+            precondition(json["timeZone"] as? String == timeZone.identifier)
+            precondition(json["status"] as? String == "open")
+            precondition(json["timeMode"] as? String == timeMode.rawValue)
+            precondition(json["locationMode"] as? String == locationMode.rawValue)
+            if timeMode == .specific {
+              precondition(json["startsAt"] as? String == "2099-07-10T23:00:00Z")
+              precondition((json["candidates"] as? [String])?.isEmpty == true)
+            } else {
+              precondition(json["startsAt"] is NSNull)
+              precondition(json["candidates"] as? [String] == ["2099-07-10T23:00:00Z"])
+            }
+            if locationMode == .open {
+              precondition(json["location"] is NSNull)
+            } else {
+              precondition(json["location"] as? String == "Park")
+            }
+            return (201, response)
           }
-          let json = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+          let result = try await api.create(plan: plan, session: credential)
           precondition(
-            Set(json.keys) == [
-              "activity", "timeMode", "timeZone", "startsAt", "locationMode", "location",
-              "candidates",
-              "status",
-            ])
-          precondition(json["timeZone"] as? String == timeZone.identifier)
-          precondition(json["status"] as? String == "open")
-          precondition(json["timeMode"] as? String == timeMode.rawValue)
-          precondition(json["locationMode"] as? String == locationMode.rawValue)
-          if timeMode == .specific {
-            precondition(json["startsAt"] as? String == "2099-07-10T23:00:00Z")
-            precondition((json["candidates"] as? [String])?.isEmpty == true)
-          } else {
-            precondition(json["startsAt"] is NSNull)
-            precondition(json["candidates"] as? [String] == ["2099-07-10T23:00:00Z"])
-          }
-          if locationMode == .open {
-            precondition(json["location"] is NSNull)
-          } else {
-            precondition(json["location"] as? String == "Park")
-          }
-          return (201, response)
+            result.title == "Dinner"
+              && !result.publicURL.absoluteString.contains("qrstuvwx23456789qrstuvwx23456789"))
         }
-        let result = try await api.create(plan: plan, session: session)
-        precondition(
-          result.title == "Dinner" && !result.publicURL.absoluteString.contains("private-token"))
       }
     }
+
   }
 
   let plan = PlanPayload(
@@ -145,7 +151,7 @@ func checkHTTPContract() async throws {
     preconditionFailure("Timeout accepted")
   } catch RallyIntegrationError.creationUncertain {}
   print(
-    "PASS: HTTP contract for all four branches, phone and selected creation timezones (phone: \(TimeZone.current.identifier)), incomplete-plan rejection, explicit nulls, bearer header, public link, error and timeout handling"
+    "PASS: HTTP contract for all four branches, phone and selected creation timezones (phone: \(TimeZone.current.identifier)), incomplete-plan rejection, explicit nulls, guest and bearer headers, public link, error and timeout handling"
   )
 }
 
@@ -168,6 +174,37 @@ func checkAccountContract() async throws {
   }
   let decoded = try await api.detail(id: id, token: "account-jwt")
   precondition(decoded.rally.candidates.count == 1 && decoded.responses[0].available == ["option"])
+  let guestToken = "qrstuvwx23456789qrstuvwx23456789"
+  for method in ["GET", "PATCH", "DELETE"] {
+    StubHTTP.handler = { request in
+      precondition(request.httpMethod == method)
+      precondition(request.url?.path == "/api/v1/rallies/\(id)")
+      precondition(request.value(forHTTPHeaderField: "Authorization") == nil)
+      precondition(request.value(forHTTPHeaderField: "X-Rally-Creator-Token") == guestToken)
+      if method == "DELETE" { return (204, Data()) }
+      return (200, detail)
+    }
+    if method == "GET" { _ = try await api.detail(id: id, creatorToken: guestToken) }
+    if method == "PATCH" {
+      _ = try await api.update(id: id, action: "confirm", creatorToken: guestToken)
+    }
+    if method == "DELETE" { try await api.delete(id: id, creatorToken: guestToken) }
+  }
+  StubHTTP.handler = { request in
+    precondition(request.httpMethod == "POST" && request.url?.path == "/api/v1/rallies/\(id)/claim")
+    precondition(request.value(forHTTPHeaderField: "Authorization") == "Bearer account-jwt")
+    precondition(request.value(forHTTPHeaderField: "X-Rally-Creator-Token") == guestToken)
+    precondition(requestBody(request).isEmpty)
+    return (200, Data(#"{"saved":true}"#.utf8))
+  }
+  try await api.claim(id: id, token: "account-jwt", creatorToken: guestToken)
+  for status in [401, 404, 409] {
+    StubHTTP.handler = { _ in (status, Data()) }
+    do {
+      try await api.claim(id: id, token: "account-jwt", creatorToken: guestToken)
+      preconditionFailure("Rejected claim accepted")
+    } catch is AccountAPIError {}
+  }
   func resolvedLocation(mode: String, original: String?, final: String?) throws -> String? {
     var envelope = try JSONSerialization.jsonObject(with: detail) as! [String: Any]
     var rally = envelope["rally"] as! [String: Any]
@@ -193,13 +230,13 @@ func checkAccountContract() async throws {
   StubHTTP.handler = { _ in
     preconditionFailure("Unsupported actions must be rejected before sending a request")
   }
-  for action in ["cancel", "unknown"] {
+  for action in ["cancel", "unknown", "archive", "unarchive"] {
     do {
       _ = try await api.update(id: id, action: action, token: "account-jwt")
       preconditionFailure("Accepted an unsupported organizer action")
     } catch AccountAPIError.invalidResponse {}
   }
-  for action in ["save", "confirm", "archive", "unarchive"] {
+  for action in ["save", "confirm"] {
     StubHTTP.handler = { request in
       precondition(request.httpMethod == "PATCH")
       precondition(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
@@ -295,7 +332,7 @@ func checkAccountContract() async throws {
     precondition(!RallyAuthConfiguration.acceptsCallback(URL(string: url)!))
   }
   print(
-    "PASS: organizer locations, timestamps, bearer authentication, PATCH fields, DELETE contract and failure recovery, uncertain mutations, callback routing"
+    "PASS: organizer locations, timestamps, guest management and claiming, bearer authentication, PATCH fields, DELETE contract and failure recovery, uncertain mutations, callback routing"
   )
 }
 

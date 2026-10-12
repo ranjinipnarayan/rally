@@ -89,6 +89,7 @@ final class RallyAccountModel: ObservableObject {
   @Published private(set) var notice: String?
   @Published private(set) var isEnteringCode = false
   @Published private(set) var signInEmail: String?
+  private let deviceStore: DeviceRallyStoring
   private let api: RallyAccountAPI
   private let storage: (any RallyAuthStorage)?
   private let auth: AuthClient?
@@ -96,6 +97,7 @@ final class RallyAccountModel: ObservableObject {
 
   init() {
     api = RallyAccountAPI()
+    deviceStore = SharedDeviceRallyStore(configuration: .configured)
     if let configuration = SharedSessionConfiguration.configured {
       let storage = NativeAuthStorage(configuration: configuration)
       self.storage = storage
@@ -115,10 +117,14 @@ final class RallyAccountModel: ObservableObject {
     }
   }
 
-  init(auth: AuthClient, storage: any RallyAuthStorage, api: RallyAccountAPI) {
+  init(
+    auth: AuthClient, storage: any RallyAuthStorage, api: RallyAccountAPI,
+    deviceStore: DeviceRallyStoring = SharedDeviceRallyStore(configuration: .configured)
+  ) {
     self.auth = auth
     self.storage = storage
     self.api = api
+    self.deviceStore = deviceStore
   }
 
   func showCodeEntry() {
@@ -225,11 +231,11 @@ final class RallyAccountModel: ObservableObject {
       loading = false
     }
     do {
-      guard let auth else { throw NativeLoginError.configuration }
-      guard auth.currentSession != nil else {
+      guard let auth, auth.currentSession != nil else {
         account = nil
         rallies = []
         if let storage { try storage.remove(key: storage.configuration.account) }
+        try await refreshDeviceRallies(operation: operation)
         return
       }
       try await accept(auth.session, operation: operation)
@@ -241,6 +247,7 @@ final class RallyAccountModel: ObservableObject {
         rallies = []
         if let storage { try? storage.remove(key: storage.configuration.account) }
       }
+      try? await refreshDeviceRallies(operation: generation)
       errorMessage = message(
         for: error, fallback: "Couldn’t refresh your Rallies. Please try again.")
     }
@@ -257,7 +264,98 @@ final class RallyAccountModel: ObservableObject {
     account = verified
     let list = try await api.list(token: session.accessToken)
     guard generation == operation else { return }
+    for var record in try deviceStore.records() {
+      if let summary = list.first(where: { $0.id == record.result.id }) {
+        record.ownerID = verified.id
+        record.summary = try JSONEncoder().encode(summary)
+        try deviceStore.save(record)
+      } else if record.ownerID?.lowercased() == verified.id.lowercased() {
+        try deviceStore.remove(id: record.result.id)
+      }
+    }
     rallies = list
+    try await refreshDeviceRallies(operation: operation)
+  }
+
+  private func deviceRecords() throws -> [DeviceRally] {
+    try deviceStore.records().filter {
+      $0.ownerID == nil || $0.ownerID?.lowercased() == account?.id.lowercased()
+    }
+  }
+
+  func isGuestRally(id: String) -> Bool {
+    (try? deviceRecords().contains { $0.result.id == id && $0.ownerID == nil }) == true
+  }
+
+  private func guestCredential(id: String) throws -> String? {
+    try deviceRecords().first { $0.result.id == id && $0.ownerID == nil }?.result.creatorToken
+  }
+
+  private func cachedSummary(_ record: DeviceRally) -> OrganizerRally {
+    if let data = record.summary,
+      let cached = try? JSONDecoder().decode(OrganizerRally.self, from: data)
+    {
+      return cached
+    }
+    return OrganizerRally(
+      id: record.result.id, activity: record.result.title,
+      publicUrl: record.result.publicURL, time: record.plan.specificDate,
+      location: record.plan.locationMode == .specific ? record.plan.location : nil,
+      status: "open", nextAction: "waiting_for_responses", section: "active",
+      archivedAt: nil, responseCount: 0)
+  }
+
+  private func refreshDeviceRallies(operation: UUID) async throws {
+    let records = try deviceRecords()
+    for record in records where !rallies.contains(where: { $0.id == record.result.id }) {
+      rallies.append(cachedSummary(record))
+    }
+    for var record in records where record.ownerID == nil {
+      do {
+        let detail = try await api.detail(
+          id: record.result.id, creatorToken: record.result.creatorToken)
+        guard generation == operation else { return }
+        let plan = detail.rally
+        let summary = OrganizerRally(
+          id: plan.id, activity: plan.activity, publicUrl: plan.publicUrl,
+          time: plan.finalTime ?? plan.startsAt, location: plan.resolvedLocation,
+          status: plan.status,
+          nextAction: plan.nextAction,
+          section: ["cancelled", "completed"].contains(plan.status)
+            ? "past"
+            : (plan.status == "draft"
+              || (plan.status == "open" && plan.nextAction != "waiting_for_responses"
+                && plan.nextAction != "none")
+              ? "needs_you" : "active"),
+          archivedAt: plan.archivedAt, responseCount: detail.responses.count)
+        record.summary = try JSONEncoder().encode(summary)
+        try deviceStore.save(record)
+        rallies.removeAll { $0.id == summary.id }
+        rallies.append(summary)
+      } catch AccountAPIError.notFound {
+        guard generation == operation else { return }
+        try deviceStore.remove(id: record.result.id)
+        rallies.removeAll { $0.id == record.result.id }
+      } catch {
+        guard generation == operation else { return }
+        errorMessage = "Some rallies couldn’t refresh. Showing saved details; pull to refresh."
+      }
+    }
+  }
+
+  func claim(id: String) async throws {
+    guard var record = try deviceRecords().first(where: { $0.result.id == id && $0.ownerID == nil })
+    else {
+      throw AccountAPIError.notFound
+    }
+    let operation = generation
+    let value = try await token()
+    let ownerID = account?.id
+    try await api.claim(id: id, token: value, creatorToken: record.result.creatorToken)
+    guard generation == operation else { throw AccountAPIError.unauthorized }
+    record.ownerID = ownerID
+    try deviceStore.save(record)
+    await refresh()
   }
 
   private func writeSharedSession(_ session: Session) throws {
@@ -283,6 +381,7 @@ final class RallyAccountModel: ObservableObject {
       account = nil
       rallies = []
       try await auth?.signOut(scope: .local)
+      try await refreshDeviceRallies(operation: generation)
     } catch {
       errorMessage = message(
         for: error,
@@ -310,11 +409,15 @@ final class RallyAccountModel: ObservableObject {
 
   func detail(id: String) async throws -> OrganizerDetail {
     let operation = generation
-    let value = try await token()
-    do { return try await api.detail(id: id, token: value) } catch {
+    let guest = try guestCredential(id: id)
+    let value = guest == nil ? try await token() : nil
+    do { return try await api.detail(id: id, token: value, creatorToken: guest) } catch {
       if generation == operation {
-        if case AccountAPIError.notFound = error { rallies.removeAll { $0.id == id } }
-        await handleUnauthorized(error)
+        if case AccountAPIError.notFound = error {
+          try deviceStore.remove(id: id)
+          rallies.removeAll { $0.id == id }
+        }
+        if guest == nil { await handleUnauthorized(error) }
       }
       throw error
     }
@@ -324,14 +427,15 @@ final class RallyAccountModel: ObservableObject {
     -> OrganizerDetail
   {
     let operation = generation
-    let value = try await token()
+    let guest = try guestCredential(id: id)
+    let value = guest == nil ? try await token() : nil
     do {
       let detail = try await api.update(
-        id: id, action: action, time: time, location: location, token: value)
+        id: id, action: action, time: time, location: location, token: value, creatorToken: guest)
       await refresh()
       return detail
     } catch {
-      if generation == operation { await handleUnauthorized(error) }
+      if generation == operation, guest == nil { await handleUnauthorized(error) }
       throw error
     }
   }
@@ -343,16 +447,18 @@ final class RallyAccountModel: ObservableObject {
     busy = true
     defer { busy = false }
     let operation = generation
-    let value = try await token()
+    let guest = try guestCredential(id: id)
+    let value = guest == nil ? try await token() : nil
     do {
-      try await api.delete(id: id, token: value)
+      try await api.delete(id: id, token: value, creatorToken: guest)
     } catch AccountAPIError.notFound {
       // An already-removed Rally should also leave the local list.
     } catch {
-      if generation == operation { await handleUnauthorized(error) }
+      if generation == operation, guest == nil { await handleUnauthorized(error) }
       throw error
     }
     guard generation == operation else { throw AccountAPIError.unauthorized }
+    try deviceStore.remove(id: id)
     rallies.removeAll { $0.id == id }
     busy = false
     await refresh()

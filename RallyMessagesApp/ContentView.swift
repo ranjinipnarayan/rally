@@ -15,7 +15,7 @@ struct ContentView: View {
       Group {
         if model.loading {
           ProgressView("loading rally…")
-        } else if model.account == nil {
+        } else if model.account == nil && model.rallies.isEmpty {
           welcome
             .toolbar(.hidden, for: .navigationBar)
         } else {
@@ -66,6 +66,7 @@ struct ContentView: View {
             RallyDesign.red)
           RallyFinish()
         }
+        if let error = model.errorMessage { Text(error.lowercased()).font(.subheadline) }
         Text(("how to create a rally").lowercased()).font(.title3.weight(.semibold))
         creationStep(
           1, title: "Open Messages",
@@ -78,7 +79,7 @@ struct ContentView: View {
         creationStep(
           3, title: "Make your plan",
           detail: "Choose what, when, and where. Then send your Rally to the conversation.")
-        Button(("see your rallies").lowercased()) { isShowingLogin = true }
+        Button(("sign in for cross-device access").lowercased()) { isShowingLogin = true }
           .buttonStyle(RallyActionButtonStyle())
         RallyAppShareFooter()
       }
@@ -148,7 +149,9 @@ struct ContentView: View {
     ScrollView {
       VStack(alignment: .leading, spacing: 24) {
         Text(("sign up or log in").lowercased()).font(.title3.weight(.semibold))
-        Text(("use your email to create and manage your rallies.").lowercased())
+        Text(
+          ("sign in to save rallies to your account and access them on other devices.").lowercased()
+        )
         TextField(("email address").lowercased(), text: $email)
           .keyboardType(.emailAddress).textContentType(.emailAddress)
           .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -196,6 +199,12 @@ struct ContentView: View {
   private var dashboard: some View {
     List {
       if let error = model.errorMessage { Text((error).lowercased()).foregroundStyle(.red) }
+      if model.account == nil {
+        Section {
+          Text("your rallies on this device").font(.headline)
+          Button("sign in for cross-device access") { isShowingLogin = true }
+        }
+      }
       rallySection("needs you", key: "needs_you")
       rallySection("active", key: "active")
       rallySection("past", key: "past")
@@ -214,9 +223,11 @@ struct ContentView: View {
             )
             .frame(minHeight: 44)
             Spacer()
-            Button(("sign out").lowercased()) { Task { await model.signOut() } }
-              .frame(minHeight: 44)
-              .disabled(model.busy)
+            if model.account != nil {
+              Button(("sign out").lowercased()) { Task { await model.signOut() } }
+                .frame(minHeight: 44)
+                .disabled(model.busy)
+            }
           }
           .font(.footnote)
           .buttonStyle(.borderless)
@@ -277,7 +288,9 @@ struct ContentView: View {
               if let time = rally.time {
                 Text((time.formatted(date: .abbreviated, time: .shortened)).lowercased())
               }
-              if let location = rally.location { Text((location).lowercased()) }
+              if let location = RallyLocation.displayName(rally.location) {
+                Text(location.lowercased()).foregroundStyle(RallyDesign.secondary)
+              }
               if rally.status == "draft" {
                 Text(("finish on website").lowercased()).font(.body.weight(.semibold))
               } else if rally.nextAction != "none" {
@@ -285,8 +298,11 @@ struct ContentView: View {
                   .subheadline.bold())
               }
             }
-          }.padding(.vertical, 10)
+          }.padding(.vertical, 4)
         }
+        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
           Button(("delete").lowercased(), systemImage: "trash") {
             rallyToDelete = rally
@@ -428,6 +444,19 @@ private struct RallyDetailView: View {
   private func form(_ detail: OrganizerDetail) -> some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 20) {
+        if model.account != nil && model.isGuestRally(id: rallyID) {
+          Button("save to my account") {
+            Task {
+              busy = true
+              defer { busy = false }
+              do { try await model.claim(id: rallyID) } catch {
+                self.error = model.message(for: error)
+              }
+            }
+          }
+          .buttonStyle(RallyActionButtonStyle())
+          .disabled(busy || model.busy)
+        }
         VStack(alignment: .leading, spacing: 6) {
           HStack {
             Text("your rally").font(.title3.weight(.semibold))
@@ -461,7 +490,9 @@ private struct RallyDetailView: View {
             } else {
               planField("when", value: "to be decided")
             }
-            planField("where", value: detail.rally.resolvedLocation ?? "to be decided")
+            planField(
+              "where",
+              value: RallyLocation.displayName(detail.rally.resolvedLocation) ?? "to be decided")
           }
         }
         if detail.rally.status == "open" {
